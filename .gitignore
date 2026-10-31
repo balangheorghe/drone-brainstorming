@@ -1,1 +1,9 @@
 analysis/data/
+data/
+*.db
+*.db-wal
+*.db-shm
+.env
+config.toml
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,22 @@
+# Alternativă fără Docker: copiați repo-ul în /opt/veghe, creați utilizatorul `veghe`,
+# puneți config.toml și .env în /opt/veghe, apoi:
+#   sudo cp deploy/veghe.service /etc/systemd/system/ && sudo systemctl enable --now veghe
+[Unit]
+Description=veghe - avertizare timpurie OSINT pentru drone
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=veghe
+WorkingDirectory=/opt/veghe
+EnvironmentFile=/opt/veghe/.env
+ExecStart=/usr/bin/python3 -m veghe --config /opt/veghe/config.toml run
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/veghe/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

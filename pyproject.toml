@@ -1,0 +1,15 @@
+[project]
+name = "veghe"
+version = "0.1.0"
+description = "Agregator OSINT de avertizare timpurie pentru drone (Iași) – Nivelul A"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+veghe = "veghe.__main__:main"
+
+[tool.setuptools]
+packages = ["veghe"]

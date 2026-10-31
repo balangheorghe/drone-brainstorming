@@ -1,0 +1,114 @@
+# veghe – configurare (fără secrete; secretele vin din .env, vezi .env.example)
+# Copiați în config.toml și ajustați.
+
+[general]
+db_path = "data/veghe.db"
+http_timeout = 15
+log_level = "INFO"
+# Pagina de stare (/health, /status). Implicit doar local; nu o expuneți pe internet.
+status_bind = "127.0.0.1"
+status_port = 8080
+
+[engine]
+max_age_min = 30          # semnalele mai vechi se arhivează, dar nu declanșează nimic
+ttl_min = 45              # o ipoteză de traseu se închide după atâtea minute fără semnale
+approach_km = 120         # „apropiere”: poziție la ≤ atâția km de Iași, spre vest
+vigilance_quiet_min = 20 # nu repeta mesajul de vigilență mai des
+official_repeat_min = 60  # o retransmitere per județ la cel mult atâtea minute
+watch_counties = ["Iași", "Botoșani", "Suceava", "Neamț", "Vaslui", "Bacău"]
+
+[watch]
+# Nume exact cum apar în API-urile ucrainene (ucraineană)
+ua_oblasts = ["Одеська область", "Вінницька область", "Чернівецька область"]
+ua_raions = [
+  "Подільський район", "Роздільнянський район", "Березівський район",
+  "Ізмаїльський район", "Болградський район", "Білгород-Дністровський район",
+  "Могилів-Подільський район", "Тульчинський район", "Дністровський район",
+]
+
+# ---------------------------------------------------------------- surse
+[sources.alerts_in_ua]          # token: ALERTS_IN_UA_TOKEN (cerere: https://alerts.in.ua/api-request)
+enabled = true
+interval = 20
+url = "https://api.alerts.in.ua/v1/alerts/active.json"
+
+[sources.ukrainealarm]          # token: UKRAINEALARM_TOKEN (cerere pe https://api.ukrainealarm.com)
+enabled = true
+interval = 60
+base_url = "https://api.ukrainealarm.com/api/v3"
+
+# Canale Telegram publice, citite prin previzualizarea t.me/s/<canal> (fără cont).
+# role: ua_alerts (alerte) · ua_direction (direcții – DOAR INTERN) · ua_official (administrații)
+[[sources.telegram]]
+channel = "air_alert_ua"        # aplicația oficială „Повітряна тривога” – funcționează fără token
+role = "ua_alerts"
+interval = 60
+
+[[sources.telegram]]
+channel = "kpszsu"              # Forțele Aeriene ale Ucrainei
+role = "ua_direction"
+interval = 60
+
+[[sources.telegram]]
+channel = "warningodesa"
+role = "ua_direction"
+interval = 60
+
+[[sources.telegram]]
+channel = "odeskaODA"           # Administrația militară regională Odesa
+role = "ua_official"
+interval = 90
+
+[[sources.telegram]]
+channel = "chernivetskaODA"     # Administrația militară regională Cernăuți
+role = "ua_official"
+interval = 120
+
+[[sources.telegram]]
+channel = "IzmailRDA"           # Raionul Izmail (de verificat cu check-sources)
+role = "ua_official"
+interval = 120
+
+# Fluxuri RSS / Atom. keywords = filtru opțional (se păstrează doar itemii care conțin unul).
+[[sources.rss]]
+name = "moldpres"
+url = "https://w.moldpres.md/config/rss.php?lang=eng"   # observat în cercetare; de verificat
+role = "md_official"
+interval = 120
+keywords = ["drone", "airspace", "uav", "unmanned"]
+
+[[sources.rss]]
+name = "gnews_md_drona"         # Google News, presa din R. Moldova (parametri nedocumentați oficial)
+url = "https://news.google.com/rss/search?q=dron%C4%83+spa%C8%9Biul+aerian+when:1h&hl=ro&gl=MD&ceid=MD:ro"
+role = "md_news"
+interval = 300
+
+[[sources.rss]]
+name = "gnews_ro_roalert"       # Google News, România: RO-Alert + dronă
+url = "https://news.google.com/rss/search?q=RO-Alert+dron%C4%83+when:1h&hl=ro&gl=RO&ceid=RO:ro"
+role = "ro_official_news"
+interval = 300
+
+# Alte fluxuri de adăugat după ce le verificați cu `python -m veghe check-sources`:
+# [[sources.rss]]
+# name = "zdg"                  # ZdG (WordPress?) – URL neconfirmat
+# url = "https://www.zdg.md/feed/"
+# role = "md_news"
+# keywords = ["dron", "spatiul aerian", "spațiul aerian"]
+
+[sources.adsb]                   # trafic aerian CIVIL; aeronavele militare sunt excluse la citire
+enabled = true
+interval = 60
+url_template = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
+points = [
+  { name = "LUKK Chișinău", lat = 46.928, lon = 28.931, radius_nm = 40 },
+  { name = "LRIA Iași", lat = 47.178, lon = 27.621, radius_nm = 25 },
+]
+
+# ---------------------------------------------------------------- livrare
+[notify]
+telegram_api = "https://api.telegram.org"
+# Canalul public: oprit implicit. Când îl porniți, mesajele publice (doar retransmiteri
+# oficiale și încetări) tot așteaptă aprobarea unui operator, dacă auto_publish_official = false.
+public_enabled = false
+auto_publish_official = false

@@ -1,0 +1,14 @@
+[
+  {"regionId": "18", "regionType": "State", "regionName": "Одеська область", "regionEngName": "Odesa region",
+   "lastUpdate": "2026-10-31T14:10:00Z",
+   "activeAlerts": [{"regionId": "18", "regionType": "State", "type": "AIR", "lastUpdate": "2026-10-31T14:10:00Z"}]},
+  {"regionId": "99", "regionType": "District", "regionName": "Подільський район", "regionEngName": "Podilskyi district",
+   "lastUpdate": "2026-10-31T14:10:00Z",
+   "activeAlerts": [{"regionId": "99", "regionType": "District", "type": "AIR", "lastUpdate": "2026-10-31T14:10:00Z"}]},
+  {"regionId": "31", "regionType": "State", "regionName": "м. Київ", "regionEngName": "Kyiv",
+   "lastUpdate": "2026-10-31T13:00:00Z",
+   "activeAlerts": [{"regionId": "31", "regionType": "State", "type": "AIR", "lastUpdate": "2026-10-31T13:00:00Z"}]},
+  {"regionId": "26", "regionType": "State", "regionName": "Чернівецька область", "regionEngName": "Chernivtsi region",
+   "lastUpdate": "2026-10-31T12:00:00Z",
+   "activeAlerts": [{"regionId": "26", "regionType": "State", "type": "ARTILLERY", "lastUpdate": "2026-10-31T12:00:00Z"}]}
+]

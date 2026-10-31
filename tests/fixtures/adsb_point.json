@@ -1,0 +1,6 @@
+{"ac":[
+ {"hex":"4b1806","type":"adsb_icao","flight":"WZZ3301 ","r":"HA-LXA","t":"A320","alt_baro":35000,"gs":450.1,"lat":47.01,"lon":28.80,"dbFlags":0},
+ {"hex":"504c71","type":"adsb_icao","flight":"FIA123  ","alt_baro":"ground","gs":0,"lat":46.93,"lon":28.93},
+ {"hex":"ae1234","type":"adsb_icao","flight":"RCH123  ","alt_baro":28000,"lat":47.2,"lon":28.1,"dbFlags":1},
+ {"hex":"4a8f01","type":"mode_s","alt_baro":12000,"dbFlags":0}
+],"msg":"No error","now":1793546700123,"total":4,"ctime":1793546700123,"ptime":2}

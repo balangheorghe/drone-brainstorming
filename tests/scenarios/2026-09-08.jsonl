@@ -1,0 +1,7 @@
+# 8 septembrie 2026 (EEST, UTC+3) – după docs/01 și docs/02 §1.4. Orele sunt cele de PUBLICARE.
+{"t": "2026-09-08T16:09:00+03:00", "source": "telegram:kpszsu", "role": "ua_direction", "text": "Реактивні БпЛА в районі Токарівки (Миколаївщина) та Буялика (Одещина), курсом на північний захід."}
+{"t": "2026-09-08T16:12:20+03:00", "source": "alerts_in_ua", "role": "ua_alert_state", "text": "Alerte active: Одеська область", "meta": {"active": [{"title": "Одеська область", "type": "oblast", "oblast": "Одеська область", "level": "yellow", "threats": ["drones"], "started_at": "2026-09-08T13:12:20Z"}]}}
+{"t": "2026-09-08T16:37:00+03:00", "source": "rss:gnews_ro_roalert", "role": "ro_official_news", "text": "RO-Alert în județele Iași și Vaslui: o dronă se îndreaptă spre nordul Moldovei, autoritățile avertizează asupra posibilității căderii unor obiecte din spațiul aerian"}
+{"t": "2026-09-08T16:40:00+03:00", "source": "rss:gnews_ro_roalert", "role": "ro_official_news", "text": "RO-Alert în Suceava, Neamț și Botoșani după ce o dronă a pătruns în spațiul aerian"}
+{"t": "2026-09-08T16:56:00+03:00", "source": "rss:gnews_md_drona", "role": "md_news", "text": "Spațiul aerian al Republicii Moldova închis temporar după apariția unui obiect zburător neidentificat"}
+{"t": "2026-09-08T17:33:00+03:00", "source": "rss:gnews_ro_roalert", "role": "ro_official_news", "text": "Alerta a încetat în județul Iași. Starea de alertă aeriană a fost ridicată"}
