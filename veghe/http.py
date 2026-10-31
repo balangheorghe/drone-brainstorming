@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import gzip
+import zlib
 import json
 import urllib.error
 import urllib.request
@@ -62,5 +62,14 @@ def request(url: str, *, method: str = "GET", headers: dict | None = None, data:
     if len(body) > max_bytes:
         raise HttpError(0, f"raspuns prea mare (> {max_bytes} B)")
     if hdrs.get("content-encoding") == "gzip":
-        body = gzip.decompress(body)
+        body = _gunzip_limited(body, max_bytes)
     return Response(status, hdrs, body)
+
+
+def _gunzip_limited(data: bytes, limit: int) -> bytes:
+    """Decomprimare cu limită (protecție contra „bombelor” gzip)."""
+    d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    out = d.decompress(data, limit + 1)
+    if len(out) > limit or d.unconsumed_tail:
+        raise HttpError(0, f"raspuns decomprimat prea mare (> {limit} B)")
+    return out
