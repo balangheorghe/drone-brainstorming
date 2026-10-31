@@ -52,6 +52,8 @@
 | 8 | Istoric UA (GitHub, zilnic) | descărcare CSV | calibrare, backtest |
 | 9 | Meteo (Open-Meteo) | REST | factor secundar; vânt pentru senzorii acustici |
 
+Lista extinsă de surse (canale OVA, `t.me/air_alert_ua` fără cheie, RSSHub, adsb.fi, NOTAM, meteo, hărți de bază): [11-fluxuri-date-harti](11-fluxuri-date-harti.md).
+
 **Ce NU se ingerează:** poziții de aeronave militare, rapoarte cetățenești automate (doar prin operator), surse fără identitate verificabilă.
 
 ## 3. NLP și toponime

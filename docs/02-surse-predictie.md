@@ -137,6 +137,10 @@ Raioane de urmărit: **Odesa** – Podilsk, Rozdilna, Berezivka (spre Transnistr
 - **Ora din zi:** incidentele de la Iași au fost **după-amiaza (16:09–18:44)**; pe Dunăre domină noaptea. 24/7 obligatoriu.
 - **Lumina:** pe 31.10 apusul la Iași a fost la ~16:55; RO-Alert-ul de la 17:04 a fost după apus, iar a doua dronă a zburat practic noaptea.
 
+### 3.6 De testat: ADS-B ca semnal mai rapid decât presa
+
+Pe 31.10, restricția din nordul R. Moldova (16:46) a precedat primul articol (16:57) cu ~11 minute. Dacă zborurile civile s-au oprit vizibil la acel moment, ADS-B ar fi un semnal public mai rapid decât presa. Verificați pe date istorice (OpenSky, arhiva adsb.lol) pentru 8.09, 12.09, 24.09 și 31.10. Catalogul complet de surse: [11-fluxuri-date-harti](11-fluxuri-date-harti.md).
+
 ## 4. Stiva de predicție, realist
 
 | Treaptă | Semnal | Avans față de RO-Alert (observat) | Ce face sistemul | Public? |

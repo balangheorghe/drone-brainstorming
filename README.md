@@ -44,7 +44,7 @@ Detalii: [docs/03-senzori-echipamente.md](docs/03-senzori-echipamente.md), [docs
 | Oficial | RO-Alert, MApN, ISU Iași, Prefectura | 0 |
 | Istoric / calibrare | setul public de alerte UA (GitHub, zilnic); jurnalul propriu | – |
 
-Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md).
+Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md); toate fluxurile și hărțile: [docs/11-fluxuri-date-harti.md](docs/11-fluxuri-date-harti.md).
 
 ## Documente
 
@@ -60,6 +60,8 @@ Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md).
 | [08-plan-actiune](docs/08-plan-actiune.md) | primii pași, întrebări pentru autorități, ce să nu faceți |
 | [09-evenimente-2026](docs/09-evenimente-2026.md) | anexă: incidentele din RO și MD, ian.–oct. 2026, cu ore |
 | [10-senzori-acustici-amplasare](docs/10-senzori-acustici-amplasare.md) | cum arată senzorii acustici, reguli de amplasare, zone în jurul Iașului, acorduri necesare |
+| [11-fluxuri-date-harti](docs/11-fluxuri-date-harti.md) | ce fluxuri de date și hărți să agregați întâi, cum, ce să nu publicați |
+| [12-catalog-surse](docs/12-catalog-surse.md) | anexă: 141 de surse cu acces, cost, licență, actualizare, precauții |
 | [analysis/](analysis/) | scriptul care leagă detecțiile moldovenești și incidentele de alertele ucrainene + [rezultate](analysis/rezultate.md) |
 
 ## Limitări
