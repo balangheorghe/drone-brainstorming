@@ -10,6 +10,14 @@
 4. **Legal, un civil sau un ONG poate:** asculta surse publice, face detecție pasivă (acustic, optic spre cer, Remote ID, ADS-B), publica cronologii și raporta la 112. **Nu poate:** bruia, folosi radar fără licență ANCOM, intercepta comunicații sau emite alerte care imită RO-Alert.
 5. **Start recomandat:** un bot care arhivează cu oră exactă toate semnalele UA/MD/RO (cost aproape zero) și dă vigilență internă + cronologii publice; un pilot cu 3–5 noduri acustice împreună cu o universitate; apoi presiune pe autorități pentru alerte pe zone mai mici, cu durată și încetare explicită, și pentru senzori instituționali pe Prut (SAFE, EDDI, Eastern Flank Watch).
 
+## Implementare: serviciul `veghe` (Nivelul A)
+
+Codul din [`veghe/`](veghe/) citește automat sursele publice (alerte UA, canale Telegram publice, presa din MD și RO, trafic aerian civil), le arhivează cu ora exactă, aplică regulile de mai sus și trimite **mesaje interne** într-un grup Telegram privat. Mesajele publice sunt doar retransmiteri ale RO-Alert-urilor relatate oficial, din șablon fix, **după aprobarea unui operator**. Fără dependențe externe (doar Python), cu Docker și systemd.
+
+- Ghid de deploy și ce s-a validat: [docs/13-implementare-deploy.md](docs/13-implementare-deploy.md)
+- Prima comandă pe server, după configurare: `docker compose run --rm veghe check-sources`
+- Reluarea unui incident real fără rețea: `python -m veghe replay tests/scenarios/2026-10-31.jsonl`
+
 ## Ce s-a întâmplat
 
 | | 8 septembrie 2026 | 31 octombrie 2026 |
@@ -62,6 +70,7 @@ Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md); toate fluxuri
 | [10-senzori-acustici-amplasare](docs/10-senzori-acustici-amplasare.md) | cum arată senzorii acustici, reguli de amplasare, zone în jurul Iașului, acorduri necesare |
 | [11-fluxuri-date-harti](docs/11-fluxuri-date-harti.md) | ce fluxuri de date și hărți să agregați întâi, cum, ce să nu publicați |
 | [12-catalog-surse](docs/12-catalog-surse.md) | anexă: 141 de surse cu acces, cost, licență, actualizare, precauții |
+| [13-implementare-deploy](docs/13-implementare-deploy.md) | serviciul `veghe`: ce face, ce s-a validat, cum se instalează |
 | [analysis/](analysis/) | scriptul care leagă detecțiile moldovenești și incidentele de alertele ucrainene + [rezultate](analysis/rezultate.md) |
 
 ## Limitări

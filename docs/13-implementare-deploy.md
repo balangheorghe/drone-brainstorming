@@ -9,7 +9,9 @@
 - **Aplică regulile** din [07](07-arhitectura-sistem.md): VIGILENȚĂ → DIRECȚIE → MOLDOVA → APROPIERE → OFICIAL, cu ETA în intervalul 450/150 km/h.
 - **Trimite mesaje INTERNE** într-un grup Telegram privat (și opțional ntfy).
 - **Mesaje PUBLICE:** doar retransmiteri ale RO-Alert-urilor relatate de presa/autoritățile românești și încetarea alertei; **niciodată** conținut din canalele ucrainene; **numai după aprobarea unui operator** (`/aproba N`). Canalul public e oprit implicit.
-- **Aeronavele militare** sunt excluse la citire; se păstrează doar numărători de aeronave civile.
+- **Aeronavele militare** sunt ignorate complet la citire (nici măcar nu se numără); se păstrează doar numărători de aeronave civile.
+- **Siguranță la livrare:** botul refuză să trimită mesaje interne dacă „grupul intern” e de fapt un canal sau un grup public; refuză ntfy.sh fără token; comenzile sunt acceptate doar de la operatori, doar din grupul intern sau din chat privat, și doar dacă sunt recente (sub 10 minute).
+- **Te anunță când orbește:** dacă o sursă cade (3 erori la rând), operatorii primesc „SURSĂ CĂZUTĂ”; la revenire, „Sursa … a revenit”. Dacă bucla principală se blochează peste 5 minute, procesul iese, iar Docker/systemd îl repornește.
 
 ### Comenzi pe Telegram (doar operatorii din `TELEGRAM_OPERATOR_IDS`)
 
@@ -36,18 +38,21 @@
 
 | Nivel | Rezultat | Ce dovedește |
 |---|---|---|
-| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
+| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec (73 de teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, refuzul comenzilor neautorizate, aprobarea unui mesaj public, `check-sources`, pagina de stare |
 | **Rulare reală a serviciului** (15 s, fără acces la surse) | merge | bucla nu cade la erori de rețea, aplică pauze progresive (40 s → 10 min), `/health` și `/status` răspund, oprire curată la SIGTERM |
 | **Surse reale (live)** | **nevalidat aici** | rețeaua acestei sesiuni blochează Telegram, API-urile ucrainene, Google News și adsb.lol. **Validarea live = `check-sources` pe server, în primele 5 minute** |
 | **Imaginea Docker** | **neconstruită aici** | daemonul Docker nu rulează în sesiune; `docker compose config` e valid |
 
+**Ce înseamnă „validat” aici:** logica, parserele și livrarea sunt testate pe formate reale (preluate din clienții oficiali și din sursele RSSHub/readsb) și pe incidentele reale reluate. **Nu** înseamnă că sursele reale răspund exact așa azi: asta se vede doar cu `check-sources` pe server.
+
 ## Deploy: de ce aveți nevoie
 
 1. **Un server Linux mic în UE** (1 vCPU, 1 GB RAM, 10 GB disc ajung), cu Docker și Docker Compose. Orice furnizor de VPS. Alternativ, un Raspberry Pi permanent conectat, cu systemd (fără Docker).
 2. **Un bot Telegram:** creat cu [@BotFather](https://t.me/BotFather) → `TELEGRAM_BOT_TOKEN`.
-3. **Un grup Telegram privat** pentru operatori, cu botul adăugat → `TELEGRAM_INTERNAL_CHAT_ID` (începe cu `-100…`; îl aflați trimițând un mesaj în grup și citind `https://api.telegram.org/bot<TOKEN>/getUpdates`).
+3. **Un grup Telegram privat** pentru operatori (fără link/nume public), cu botul adăugat → `TELEGRAM_INTERNAL_CHAT_ID` (începe cu `-100…`; îl aflați trimițând un mesaj în grup și citind `https://api.telegram.org/bot<TOKEN>/getUpdates`). Dacă grupul are nume public (@…), botul refuză să trimită în el.
 4. **ID-urile numerice ale operatorilor** → `TELEGRAM_OPERATOR_IDS` (de ex. prin @userinfobot).
 5. **Token-uri pentru API-urile ucrainene** (opționale la început; canalul `air_alert_ua` merge fără):
    - alerts.in.ua: formularul [alerts.in.ua/api-request](https://alerts.in.ua/api-request) – descrieți scopul civil cu cuvintele voastre;
@@ -67,7 +72,10 @@ docker compose build
 docker compose run --rm veghe check-sources    # VALIDAREA LIVE: fiecare sursă trebuie să aibă ✓
 docker compose up -d
 docker compose logs -f                    # urmăriți primele minute
+chmod 600 .env                            # secretele doar pentru voi
 ```
+
+Actualizare ulterioară: `git pull && docker compose build && docker compose up -d`.
 
 Pe Telegram, în grupul privat: `/stare`. Pagina de stare e disponibilă doar pe server: `curl http://127.0.0.1:8080/status` (sau printr-un tunel SSH).
 
@@ -102,5 +110,6 @@ Necesită Python ≥ 3.11 și pachetul `tzdata` al sistemului.
 
 - Analiza textului e pe cuvinte-cheie și localități; formulările neobișnuite pot fi ratate. Toate mesajele publice trec prin operator.
 - Coordonatele localităților sunt aproximative (±2–5 km); ETA-urile sunt în linie dreaptă.
-- Starea ipotezelor e în memorie: după o repornire, ipotezele deschise se pierd (arhiva rămâne).
+- Starea ipotezelor e în memorie: după o repornire, ipotezele deschise se pierd (arhiva rămâne). La prima citire după pornire, știrile fără dată sunt doar arhivate (ca să nu declanșeze alerte vechi).
+- `python -m veghe roalert` din linia de comandă doar arhivează (pentru raport); pentru a informa serviciul activ folosiți `/roalert` pe Telegram.
 - Google News RSS nu e un API oficial; poate fi limitat. Previzualizarea t.me/s nu e un API garantat.
