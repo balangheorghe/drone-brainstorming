@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import zlib
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -40,9 +41,21 @@ def request(url: str, *, method: str = "GET", headers: dict | None = None, data:
     h = {"User-Agent": user_agent, "Accept-Encoding": "gzip"}
     h.update(headers or {})
     req = urllib.request.Request(url, data=data, headers=h, method=method)
+    deadline = time.monotonic() + 2 * timeout  # limită totală: o sursă care „picură” nu blochează
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            body = r.read(max_bytes + 1)
+            chunks, size = [], 0
+            while True:
+                chunk = r.read(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > max_bytes:
+                    break
+                if time.monotonic() > deadline:
+                    raise HttpError(0, f"timp total depășit ({2 * timeout:.0f} s)")
+            body = b"".join(chunks)
             hdrs = {k.lower(): v for k, v in r.headers.items()}
             status = r.status
     except urllib.error.HTTPError as e:
@@ -58,6 +71,11 @@ def request(url: str, *, method: str = "GET", headers: dict | None = None, data:
             detail = e.read(300).decode("utf-8", "replace")
         except Exception:
             detail = ""
+        if ra_s is None and detail.startswith("{"):  # Telegram: {"parameters": {"retry_after": N}}
+            try:
+                ra_s = float(json.loads(detail).get("parameters", {}).get("retry_after"))
+            except (ValueError, TypeError, AttributeError):
+                ra_s = None
         raise HttpError(e.code, detail, ra_s) from None
     if len(body) > max_bytes:
         raise HttpError(0, f"raspuns prea mare (> {max_bytes} B)")

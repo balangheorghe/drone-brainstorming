@@ -24,14 +24,10 @@ from .store import Store
 from .timeutil import hhmm, now, parse_iso, to_local
 
 
-def _app(args):
+def cmd_run(args):
     from .app import App
 
-    return App(load(args.config))
-
-
-def cmd_run(args):
-    app = _app(args)
+    app = App(load(args.config), verify_private=True)
     for s in (signal.SIGTERM, signal.SIGINT):
         signal.signal(s, lambda *_: app.stop.set())
     app.run_forever()
@@ -119,13 +115,16 @@ def cmd_report(args):
 
 
 def cmd_roalert(args):
+    """Doar arhivează (pentru raport). Serviciul care rulează nu e anunțat: pentru asta folosiți
+    /roalert pe Telegram. Așa nu se creează mesaje duble sau trimiteri în paralel."""
+    from .iso_helpers import manual_roalert_signal
     from .notify import parse_hhmm
 
-    app = _app(args)
+    cfg = load(args.config)
+    st = Store(cfg.get("general", "db_path", default="data/veghe.db"))
     at = parse_hhmm(args.at, now()) if args.at else now()
-    app.log_roalert(args.county, at, "operator:cli")
-    app.dispatcher.flush()
-    print(f"Înregistrat RO-Alert {args.county} la {hhmm(at)}.")
+    st.add_signal(manual_roalert_signal(args.county, at, "operator:cli"))
+    print(f"Arhivat RO-Alert {args.county} la {hhmm(at)} (pentru raport). Pentru motorul activ folosiți /roalert pe Telegram.")
 
 
 def cmd_outbox(args):
@@ -159,8 +158,15 @@ def main(argv=None):
         x = sub.add_parser(name)
         x.add_argument("id", type=int)
     args = p.parse_args(argv)
-    cfg_level = "INFO"
-    logging.basicConfig(level=cfg_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    level = "INFO"
+    try:
+        import tomllib
+
+        with open(args.config, "rb") as f:
+            level = str(tomllib.load(f).get("general", {}).get("log_level", "INFO")).upper()
+    except (OSError, ValueError):
+        pass
+    logging.basicConfig(level=getattr(logging, level, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cmd = args.cmd or "run"
     if cmd == "run":
         return cmd_run(args)

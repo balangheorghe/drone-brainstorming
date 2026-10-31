@@ -96,6 +96,13 @@ def upstream():
     srv.shutdown()
 
 
+def cycle(app):
+    """Un ciclu complet: pornește sursele, așteaptă răspunsurile, le procesează."""
+    app.run_cycle()
+    app.drain()
+    app.run_cycle()
+
+
 def write_config(tmp_path, base, extra=""):
     cfg = f"""
 [general]
@@ -151,7 +158,7 @@ def env(monkeypatch):
 def test_full_cycle(tmp_path, upstream, env):
     app = App(load(str(write_config(tmp_path, upstream.base))))
     assert len(app.collectors) == 6
-    app.run_cycle()
+    cycle(app)
 
     # autentificare corectă la sursele ucrainene
     def hdr(path, name):
@@ -178,7 +185,7 @@ def test_full_cycle(tmp_path, upstream, env):
 
     # al doilea ciclu: nimic nou (deduplicare), nicio retrimitere
     n_before = len(upstream.sent)
-    app.run_cycle()
+    cycle(app)
     assert len(upstream.sent) == n_before
 
     # un neautorizat încearcă să aprobe → ignorat; operatorul 42 aprobă → se publică
@@ -212,7 +219,7 @@ def test_broken_source_backs_off_and_others_continue(tmp_path, upstream, env):
     text = p.read_text(encoding="utf-8").replace(f'url = "{upstream.base}/rss/md"', f'url = "{upstream.base}/broken"')
     p.write_text(text, encoding="utf-8")
     app = App(load(str(p)))
-    app.run_cycle()
+    cycle(app)
     health = {r["source"]: r for r in app.store.health()}
     assert health["rss:md"]["error_count"] == 1 and "nu e un flux RSS" in health["rss:md"]["last_error"]
     assert health["telegram:kpszsu"]["error_count"] == 0
@@ -231,10 +238,38 @@ def test_check_sources_command(tmp_path, upstream, env, capsys):
 
 def test_status_http_endpoint(tmp_path, upstream, env):
     app = App(load(str(write_config(tmp_path, upstream.base))))
-    app.run_cycle()
+    cycle(app)
     srv = app.start_status_server()
     port = srv.server_address[1]
     body = urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=5).read().decode()
     assert json.loads(body)["nivel"]
     assert urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5).status == 200
     srv.shutdown()
+
+
+def test_source_down_and_recovery_are_announced(tmp_path, upstream, env):
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace(f'url = "{upstream.base}/rss/md"', f'url = "{upstream.base}/broken"'),
+                 encoding="utf-8")
+    app = App(load(str(p)))
+    for _ in range(3):
+        app.next_due["rss:md"] = 0
+        cycle(app)
+    texts = [m["text"] for m in upstream.sent]
+    assert sum("SURSĂ CĂZUTĂ" in t and "rss:md" in t for t in texts) == 1  # o singură dată
+    # sursa își revine
+    md = next(c for c in app.collectors if c.name == "rss:md")
+    md.url = f"{upstream.base}/rss/md"
+    app.next_due["rss:md"] = 0
+    cycle(app)
+    assert any("Sursa rss:md a revenit" in m["text"] for m in upstream.sent)
+
+
+def test_first_poll_does_not_act_on_undated_items(tmp_path, upstream, env):
+    from veghe.models import Signal
+
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    s = Signal("rss:md", "md_news", "O dronă în raionul Telenești, Republica Moldova", dt.datetime.now(UTC))
+    assert app.ingest([s], dt.datetime.now(UTC), warmup=True) == 0  # fără dată, la pornire: doar arhivat
+    s2 = Signal("rss:md", "md_news", "O dronă în raionul Soroca, Republica Moldova", dt.datetime.now(UTC))
+    assert app.ingest([s2], dt.datetime.now(UTC), warmup=False) > 0

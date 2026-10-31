@@ -139,4 +139,4 @@ def test_parsers_fail_loudly_on_wrong_pages():
 
 def test_count_aircraft_excludes_military():
     c = C.count_aircraft(json.loads((FIX / "adsb_point.json").read_text()))
-    assert c == {"civil_airborne": 1, "civil_total": 3, "excluded_military": 1}
+    assert c == {"civil_airborne": 1, "civil_total": 3}  # militarul nu e nici măcar numărat

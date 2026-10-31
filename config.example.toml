@@ -10,7 +10,10 @@ status_bind = "127.0.0.1"
 status_port = 8080
 
 [engine]
-max_age_min = 30          # semnalele mai vechi se arhivează, dar nu declanșează nimic
+max_age_min = 30          # semnalele (Telegram) mai vechi se arhivează, dar nu declanșează nimic
+max_age_news_min = 60     # idem pentru presă / RSS (indexare mai lentă)
+tg_alert_ttl_min = 90     # o alertă văzută doar pe Telegram expiră după atâtea minute fără confirmare
+state_stale_min = 10      # starea unei surse de alerte UA care nu mai răspunde e ignorată după atâtea minute
 ttl_min = 45              # o ipoteză de traseu se închide după atâtea minute fără semnale
 approach_km = 120         # „apropiere”: poziție la ≤ atâția km de Iași, spre vest
 vigilance_quiet_min = 20 # nu repeta mesajul de vigilență mai des
@@ -111,4 +114,10 @@ telegram_api = "https://api.telegram.org"
 # Canalul public: oprit implicit. Când îl porniți, mesajele publice (doar retransmiteri
 # oficiale și încetări) tot așteaptă aprobarea unui operator, dacă auto_publish_official = false.
 public_enabled = false
+# Publicare automată: DOAR pentru RO-Alert-urile înregistrate de operator (/roalert). Presa cere mereu /aproba.
 auto_publish_official = false
+telegram_min_interval = 3.1   # secunde între mesaje (limita Telegram ~20/min într-un grup)
+# La pornire, botul verifică că grupul intern e PRIVAT (nu canal, fără @nume public) și refuză altfel.
+allow_unverified_internal_chat = false
+# ntfy.sh fără token e public: refuzat, cu excepția cazului în care puneți true (nerecomandat).
+allow_public_ntfy = false

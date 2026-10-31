@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS outbox (
   approved_by TEXT,
   sent_at TEXT,
   attempts INTEGER DEFAULT 0,
-  error TEXT
+  error TEXT,
+  delivered TEXT DEFAULT '',
+  next_attempt_at TEXT
 );
 CREATE TABLE IF NOT EXISTS health (
   source TEXT PRIMARY KEY,
@@ -59,9 +61,9 @@ CREATE TABLE IF NOT EXISTS adsb_samples (
   ts TEXT NOT NULL,
   point TEXT NOT NULL,
   civil_airborne INTEGER,
-  civil_total INTEGER,
-  excluded_military INTEGER
+  civil_total INTEGER
 );
+CREATE INDEX IF NOT EXISTS ix_adsb_point_ts ON adsb_samples(point, ts);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
 """
 
@@ -76,6 +78,11 @@ class Store:
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(SCHEMA)
+            for col in ("delivered TEXT DEFAULT ''", "next_attempt_at TEXT"):  # migrare pentru baze mai vechi
+                try:
+                    self._db.execute(f"ALTER TABLE outbox ADD COLUMN {col}")
+                except sqlite3.OperationalError:
+                    pass
             self._db.commit()
 
     def close(self):
@@ -127,10 +134,11 @@ class Store:
             self._db.commit()
             return int(cur.lastrowid)
 
-    def outbox(self, status: str | None = None, limit: int = 50) -> list[sqlite3.Row]:
+    def outbox(self, status: str | None = None, limit: int = 50, newest_first: bool = False) -> list[sqlite3.Row]:
+        order = "DESC" if newest_first else "ASC"
         with self._lock:
             if status:
-                return list(self._db.execute("SELECT * FROM outbox WHERE status=? ORDER BY id LIMIT ?", (status, limit)))
+                return list(self._db.execute(f"SELECT * FROM outbox WHERE status=? ORDER BY id {order} LIMIT ?", (status, limit)))
             return list(self._db.execute("SELECT * FROM outbox ORDER BY id DESC LIMIT ?", (limit,)))
 
     def get_outbox(self, oid: int) -> sqlite3.Row | None:
@@ -167,9 +175,16 @@ class Store:
             return list(self._db.execute("SELECT * FROM health ORDER BY source"))
 
     # --- ADS-B ---
-    def add_adsb_sample(self, ts: dt.datetime, point: str, airborne: int, total: int, military: int):
+    def add_adsb_sample(self, ts: dt.datetime, point: str, airborne: int, total: int):
+        # doar trafic civil; aeronavele militare nu se numără și nu se păstrează
         with self._lock:
-            self._db.execute("INSERT INTO adsb_samples VALUES (?,?,?,?,?)", (iso(ts), point, airborne, total, military))
+            self._db.execute("INSERT INTO adsb_samples(ts,point,civil_airborne,civil_total) VALUES (?,?,?,?)",
+                             (iso(ts), point, airborne, total))
+            self._db.commit()
+
+    def prune(self, keep_adsb_days: int = 7):
+        with self._lock:
+            self._db.execute("DELETE FROM adsb_samples WHERE ts < ?", (iso(now() - dt.timedelta(days=keep_adsb_days)),))
             self._db.commit()
 
     def adsb_samples(self, point: str, since: dt.datetime) -> list[sqlite3.Row]:

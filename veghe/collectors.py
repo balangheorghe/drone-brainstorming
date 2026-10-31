@@ -10,6 +10,7 @@ import datetime as dt
 import email.utils
 import hashlib
 import html
+import html.entities
 import json
 import re
 import xml.etree.ElementTree as ET
@@ -18,7 +19,7 @@ from html.parser import HTMLParser
 from . import http
 from .models import Signal
 from .nlp import normalize
-from .timeutil import iso, parse_iso
+from .timeutil import iso, parse_iso, to_local
 
 
 class Collector:
@@ -93,8 +94,8 @@ class AlertsInUA(Collector):
         r = self._get(self.url, headers)
         if r.status == 304:
             return []
-        self._last_modified = r.headers.get("last-modified")
         active = parse_alerts_in_ua(r.json(), self.watch_oblasts, self.watch_raions)
+        self._last_modified = r.headers.get("last-modified")  # doar după o parsare reușită
         sig = _state_signal(self.name, active, now)
         if sig.meta["state_hash"] == self._last_hash:
             return []
@@ -176,7 +177,8 @@ class _TmeParser(HTMLParser):
         if "tgme_channel_history" in classes:
             self.seen_history = True
         if "tgme_widget_message" in classes and a.get("data-post"):
-            self._cur = {"post": a["data-post"], "text": [], "datetime": None, "link": ""}
+            self._cur = {"post": a["data-post"], "text": [], "datetime": None, "link": "",
+                         "service": "service_message" in classes}
             self._msg_depth = depth
             self.posts.append(self._cur)
         if self._cur is None:
@@ -216,8 +218,8 @@ def parse_tme(page: str) -> list[dict]:
         raise ValueError("pagina t.me/s nu conține mesaje publice (canal inexistent sau previzualizare dezactivată)")
     out = []
     for post in p.posts:
-        text = re.sub(r"[ \t]+", " ", "".join(post["text"])).strip()
-        if not text:
+        text = re.sub(r"[ \t]+", " ", "".join(post["text"])).strip()[:4000]
+        if not text or post.get("service"):
             continue
         out.append({"post": post["post"], "text": text, "published_at": parse_iso(post["datetime"]),
                     "link": post["link"] or f"https://t.me/{post['post']}"})
@@ -232,35 +234,68 @@ class TelegramWeb(Collector):
 
     def poll(self, now):
         posts = parse_tme(self._get(self.url).text())
+        # cheia include un hash al textului: o postare editată (direcție nouă) e reevaluată
         return [Signal(source=self.name, role=self.role, text=p["text"], received_at=now,
-                       published_at=p["published_at"], url=p["link"], ext_id=p["post"]) for p in posts]
+                       published_at=p["published_at"], url=p["link"],
+                       ext_id=f"{p['post']}#{hashlib.sha256(p['text'].encode()).hexdigest()[:8]}",
+                       meta={"post": p["post"]}) for p in posts]
 
 
 # ---------------------------------------------------------------------------
 # RSS / Atom (presă, Google News, Moldpres)
 # ---------------------------------------------------------------------------
 
-_TAG_RX = re.compile(r"<[^>]+>")
+_TAG_RX = re.compile(r"<[^<>]*>")
 
 
-def _strip_html(s: str) -> str:
-    return re.sub(r"\s+", " ", html.unescape(_TAG_RX.sub(" ", s or ""))).strip()
+def _strip_html(s: str, cap: int = 20000) -> str:
+    return re.sub(r"\s+", " ", html.unescape(_TAG_RX.sub(" ", (s or "")[:cap]))).strip()
+
+
+def _as_ro_local(t: dt.datetime) -> dt.datetime:
+    """Dată fără fus orar → presupunem ora României (presa locală), nu UTC."""
+    guess = t.replace(tzinfo=dt.timezone.utc)
+    off = to_local(guess).utcoffset() or dt.timedelta(hours=2)
+    return (t - off).replace(tzinfo=dt.timezone.utc)
 
 
 def _parse_date(s: str | None) -> dt.datetime | None:
     if not s:
         return None
     s = s.strip()
-    t = parse_iso(s)
-    if t:
-        return t
+    iso_s = s[:-1] + "+00:00" if s.endswith("Z") else s
     try:
-        t = email.utils.parsedate_to_datetime(s)
-    except (TypeError, ValueError):
-        return None
+        t = dt.datetime.fromisoformat(iso_s)
+    except ValueError:
+        s2 = re.sub(r"\bEEST$", "+0300", re.sub(r"\bEET$", "+0200", s))
+        try:
+            t = email.utils.parsedate_to_datetime(s2)
+        except (TypeError, ValueError, IndexError):
+            return None
     if t.tzinfo is None:
-        t = t.replace(tzinfo=dt.timezone.utc)
+        return _as_ro_local(t)
     return t.astimezone(dt.timezone.utc)
+
+
+_XML_ENT = {"amp", "lt", "gt", "quot", "apos"}
+
+
+def _fix_entities(raw: bytes) -> bytes:
+    """Înlocuiește doar entitățile HTML necunoscute XML-ului (ex. &nbsp;) cu referințe numerice."""
+    text = raw.decode("utf-8", "replace")
+
+    def rep(m):
+        name = m.group(1)
+        if name is None:
+            return "&amp;"
+        if name.startswith("#") or name in _XML_ENT:
+            return m.group(0)
+        ch = html.entities.html5.get(name + ";")
+        return "".join(f"&#{ord(c)};" for c in ch) if ch else "&amp;" + name + ";"
+
+    text = re.sub(r"&(?:(#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);)?", rep, text)
+    text = re.sub(r"^<\?xml[^>]*\?>", '<?xml version="1.0" encoding="utf-8"?>', text)
+    return text.encode("utf-8")
 
 
 def _first(children: dict, *names):
@@ -275,10 +310,10 @@ def parse_feed(xml_text: str) -> list[dict]:
     """RSS 2.0 (<item>) și Atom (<entry>)."""
     raw = xml_text.encode("utf-8") if isinstance(xml_text, str) else xml_text
     try:
-        root = ET.fromstring(raw)
+        root = ET.fromstring(raw)  # din octeți: ET respectă encoding-ul din prolog
     except ET.ParseError:
         # unele fluxuri folosesc entități HTML (&nbsp; etc.) nedeclarate în XML
-        root = ET.fromstring(html.unescape(raw.decode("utf-8", "replace")).replace("&", "&amp;").encode("utf-8"))
+        root = ET.fromstring(_fix_entities(raw))
     rtag = root.tag.split("}")[-1].lower()
     if rtag not in ("rss", "feed", "rdf"):
         raise ValueError(f"nu e un flux RSS/Atom (rădăcina <{rtag}>) – URL greșit sau pagină de blocare?")
@@ -290,8 +325,10 @@ def parse_feed(xml_text: str) -> list[dict]:
         f = {c.tag.split("}")[-1]: c for c in el}
         title = _strip_html((f.get("title").text if f.get("title") is not None else "") or "")
         link = ""
-        if f.get("link") is not None:
-            link = (f["link"].text or f["link"].get("href") or "").strip()
+        links = [c for c in el if c.tag.split("}")[-1] == "link"]
+        alt = [c for c in links if c.get("rel") in (None, "alternate")] or links
+        if alt:
+            link = (alt[0].text or alt[0].get("href") or "").strip()
         summary_el = _first(f, "description", "summary", "content")
         summary = _strip_html(summary_el.text if summary_el is not None else "")
         date_el = _first(f, "pubDate", "published", "updated", "date")
@@ -320,10 +357,10 @@ class Feed(Collector):
         self.strip_source = "news.google." in url
 
     def poll(self, now):
-        items = parse_feed(self._get(self.url).text())
+        items = parse_feed(self._get(self.url).body)
         out = []
         for it in items:
-            title, summary = it["title"], it["summary"]
+            title, summary = it["title"][:500], it["summary"]
             if self.strip_source:
                 title = strip_publisher(title)
                 summary = ""  # descrierea Google News repetă titlul și publicația
@@ -341,17 +378,16 @@ class Feed(Collector):
 
 def count_aircraft(data: dict) -> dict:
     """Format readsb „re-api” (folosit de adsb.lol /v2/point): {"ac": [...], "now", "total"}.
-    Militar = dbFlags & 1 (README-json readsb). Aeronavele militare NU se păstrează, doar
-    se numără ca excluse."""
-    airborne = total = military = 0
+    Militar = dbFlags & 1 (README-json readsb). Aeronavele militare sunt ignorate complet:
+    nu se numără, nu se păstrează, nu se afișează."""
+    airborne = total = 0
     for ac in data.get("ac") or []:
         if int(ac.get("dbFlags") or 0) & 1:
-            military += 1
             continue
         total += 1
         if ac.get("alt_baro") != "ground" and ac.get("lat") is not None:
             airborne += 1
-    return {"civil_airborne": airborne, "civil_total": total, "excluded_military": military}
+    return {"civil_airborne": airborne, "civil_total": total}
 
 
 class Adsb(Collector):
@@ -362,7 +398,7 @@ class Adsb(Collector):
     def poll(self, now):
         out = []
         for p in self.points:
-            url = self.url_template.format(lat=p["lat"], lon=p["lon"], radius=p.get("radius_nm", 30))
+            url = self.url_template.format(lat=p["lat"], lon=p["lon"], radius=int(p.get("radius_nm", 30)))
             counts = count_aircraft(self._get(url, {"Accept": "application/json"}).json())
             out.append(Signal(source=self.name, role="adsb", text=f"{p['name']}: {counts['civil_airborne']} civile în aer",
                               received_at=now, ext_id=f"{p['name']}@{iso(now)}", meta={"point": p["name"], **counts}))

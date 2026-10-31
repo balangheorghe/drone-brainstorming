@@ -45,7 +45,8 @@ def _rx(words: list[str]) -> re.Pattern:
 
 DRONE = _rx([
     r"бпла", r"безпілотн", r"беспилотн", r"дрон", r"шахед", r"шахід", r"герань", r"гербер",
-    r"ударн\w* бпла", r"drona", r"drone\b", r"dronei", r"dronelor", r"aparat\w* de zbor fara pilot",
+    r"ударн\w* бпла", r"dron(?:a|e|ei|ele|elor)\b", r"drones?\b", r"uavs?\b", r"unmanned", r"мопед",
+    r"aparat\w* de zbor fara pilot",
     r"aparat\w* fara pilot", r"tinta aeriana", r"tinte aeriene",
     r"obiect\w* zburator", r"shahed", r"geran",
 ])
@@ -58,17 +59,19 @@ RESTRICT = _rx([r"restrictionat", r"inchis", r"restrictii", r"обмежен", r
 REOPEN = _rx([r"redeschis", r"ridicat\w* restrict", r"відкрит", r"открыт"])
 LOST = _rx([r"a disparut de pe radar", r"disparut de pe sistemele", r"a parasit spatiul aerian", r"a iesit din spatiul aerian"])
 ROALERT = _rx([r"ro-alert", r"ro alert", r"roalert", r"alerta extrema", r"alerta aeriana"])
-END = _rx([r"incetarea alertei", r"alerta a incetat", r"a incetat alerta", r"a incetat starea de alerta",
-           r"starea de alerta aeriana .{0,30}(?:a fost ridicata|a incetat)", r"s-a incheiat alerta"])
+END = _rx([r"incetare\w* (?:a )?(?:starii de )?alert", r"alerta (?:aeriana )?a incetat", r"a incetat (?:starea de )?alert",
+           r"alerta (?:aeriana )?(?:a fost )?(?:ridicata|incheiata)", r"starea de alerta aeriana .{0,30}(?:a fost ridicata|a incetat)",
+           r"s-a incheiat alerta", r"alert(?:a|ei) (?:aeriana )?(?:s-a )?(?:incheiat|terminat)"])
 MOLDOVA = _rx([r"молдов", r"moldov", r"r\. moldova", r"republica moldova", r"придністров", r"приднестров", r"transnistr"])
 ROMANIA = _rx([r"румун", r"румын", r"romani"])
 DIRECTION = re.compile(
-    r"(?<!\w)(?:курсом на|у напрямку|в напрямку|в направлении|направлением на|spre|in directia|cu directia|cu deplasare spre)\s+([^\.,;:!\n]{0,60})"
+    r"(?<!\w)(?:курсом на|у напрямку|в напрямку|в направлении|направлением на|spre|in directia|cu directia|cu deplasare spre|towards|heading to|in the direction of)\s+([^\.,;:!\n]{0,60})"
 )
 ADMIN_CONT = re.compile(r",\s*((?:raionul|r\.|regiunea|районі?|район\w*|област\w*)\s+[^\.,;:!\n]{0,40})")
 ORIGIN = re.compile(r"(?<!\w)(?:dinspre|з боку|со стороны|from)\s+([^\.,;:!\n]{0,60})")
-WESTWARD = _rx([r"на захід", r"західн\w* напрям", r"на запад", r"spre vest", r"directia vest", r"nord-vest",
-                 r"північн\w*[ -]захід", r"північно-західн", r"северо-запад", r"северо-западн", r"западн\w* направлен"])
+WESTWARD = _rx([r"на захід", r"західн\w* напрям", r"на запад", r"spre vest", r"directia vest", r"nord-vest", r"sud-vest",
+                 r"північн\w*[ -]захід", r"північно-західн", r"південн\w*[ -]захід", r"південно-західн",
+                 r"северо-запад", r"юго-запад", r"западн\w* направлен", r"westward", r"north-?west", r"south-?west"])
 
 _VARIANT_RX: dict[str, re.Pattern] = {}
 
@@ -79,7 +82,7 @@ def _place_rx(p: geo.Place) -> re.Pattern:
         parts = []
         for v in p.variants:
             if v.startswith("re:"):
-                parts.append("(?:" + v[3:] + ")")
+                parts.append(r"(?<!\w)(?:" + v[3:] + ")")
             else:
                 parts.append(r"(?<!\w)" + re.escape(normalize(v)))
         rx = re.compile("|".join(parts))
