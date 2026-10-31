@@ -116,6 +116,13 @@ class Store:
                 "SELECT * FROM signals WHERE received_at >= ? AND received_at <= ? ORDER BY received_at",
                 (iso(t0), iso(t1))))
 
+    def manual_between(self, t0: dt.datetime, t1: dt.datetime) -> list[sqlite3.Row]:
+        """Înregistrările operatorului după ora ALERTEI (published_at), nu după ora înregistrării."""
+        with self._lock:
+            return list(self._db.execute(
+                "SELECT * FROM signals WHERE role='manual' AND COALESCE(published_at, received_at) BETWEEN ? AND ? "
+                "ORDER BY COALESCE(published_at, received_at)", (iso(t0), iso(t1))))
+
     def recent_signals(self, n: int = 10) -> list[sqlite3.Row]:
         with self._lock:
             return list(self._db.execute("SELECT * FROM signals ORDER BY id DESC LIMIT ?", (n,)))

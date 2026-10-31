@@ -425,3 +425,20 @@ def test_http_total_deadline_against_trickling_server():
         http.request(f"http://127.0.0.1:{srv.server_address[1]}/", timeout=1, max_bytes=50_000_000)
     assert time.monotonic() - t < 4
     srv.shutdown()
+
+
+def test_report_finds_roalert_logged_hours_later(tmp_path, capsys):
+    from veghe.__main__ import main
+    from veghe.iso_helpers import manual_roalert_signal
+
+    db = tmp_path / "v.db"
+    (tmp_path / "c.toml").write_text(f'[general]\ndb_path = "{db}"\n', encoding="utf-8")
+    st = Store(str(db))
+    st.add_event(3, 1, "moldova", "x", T0)                       # 15:00 UTC
+    s = manual_roalert_signal("Iași", T0 + dt.timedelta(minutes=8), "operator:42")
+    s.received_at = T0 + dt.timedelta(hours=5)                   # înregistrat abia seara
+    st.add_signal(s)
+    main(["--config", str(tmp_path / "c.toml"), "report", "--since", iso(T0 - dt.timedelta(minutes=30)),
+          "--to", iso(T0 + dt.timedelta(minutes=60))])
+    out = capsys.readouterr().out
+    assert "neînregistrat" not in out and "+8 min" in out

@@ -100,7 +100,7 @@ def cmd_report(args):
     t1 = parse_iso(args.to) if args.to else now()
     t0 = parse_iso(args.since) if args.since else t1 - dt.timedelta(hours=24)
     evs = st.events_between(t0, t1)
-    sigs = [r for r in st.signals_between(t0, t1) if r["role"] == "manual"]
+    sigs = st.manual_between(t0, t1)
     first: dict[int, dt.datetime] = {}
     for e in evs:
         lv = int(e["level"] or 0)
