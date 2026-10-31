@@ -19,7 +19,7 @@ from html.parser import HTMLParser
 from . import http
 from .models import Signal
 from .nlp import normalize
-from .timeutil import iso, parse_iso, to_local
+from .timeutil import RO_TZ, iso, parse_iso, to_local
 
 
 class Collector:
@@ -29,9 +29,12 @@ class Collector:
         self.interval = interval
         self.timeout = timeout
         self.user_agent = user_agent
+        self.last_date = None
 
     def _get(self, url: str, headers: dict | None = None) -> http.Response:
-        return http.request(url, headers=headers, timeout=self.timeout, user_agent=self.user_agent)
+        r = http.request(url, headers=headers, timeout=self.timeout, user_agent=self.user_agent)
+        self.last_date = r.headers.get("date")  # pentru verificarea ceasului serverului
+        return r
 
     def poll(self, now: dt.datetime) -> list[Signal]:  # pragma: no cover - interfață
         raise NotImplementedError
@@ -253,10 +256,16 @@ def _strip_html(s: str, cap: int = 20000) -> str:
 
 
 def _as_ro_local(t: dt.datetime) -> dt.datetime:
-    """Dată fără fus orar → presupunem ora României (presa locală), nu UTC."""
-    guess = t.replace(tzinfo=dt.timezone.utc)
-    off = to_local(guess).utcoffset() or dt.timedelta(hours=2)
+    """Dată fără fus orar → ora României (presa locală), corect și în jurul schimbării orei."""
+    if RO_TZ is not None:
+        return t.replace(tzinfo=RO_TZ).astimezone(dt.timezone.utc)
+    off1 = to_local((t - dt.timedelta(hours=2)).replace(tzinfo=dt.timezone.utc)).utcoffset()
+    off = to_local((t - off1).replace(tzinfo=dt.timezone.utc)).utcoffset()
     return (t - off).replace(tzinfo=dt.timezone.utc)
+
+
+_ZONES = {"UT": "+0000", "UTC": "+0000", "GMT": "+0000", "Z": "+0000", "CET": "+0100", "CEST": "+0200",
+          "EET": "+0200", "EEST": "+0300", "MSK": "+0300"}
 
 
 def _parse_date(s: str | None) -> dt.datetime | None:
@@ -267,11 +276,15 @@ def _parse_date(s: str | None) -> dt.datetime | None:
     try:
         t = dt.datetime.fromisoformat(iso_s)
     except ValueError:
-        s2 = re.sub(r"\bEEST$", "+0300", re.sub(r"\bEET$", "+0200", s))
+        m = re.search(r"\s([A-Za-z]{1,4}|[+-]\d{4})$", s)
+        zone = m.group(1) if m else None
+        s2 = s[: m.start(1)] + _ZONES[zone.upper()] if zone and zone.upper() in _ZONES else s
         try:
             t = email.utils.parsedate_to_datetime(s2)
         except (TypeError, ValueError, IndexError):
             return None
+        if t.tzinfo is None and zone:  # „-0000” = UTC (RFC 5322); alt nume de zonă necunoscut → UTC
+            return t.replace(tzinfo=dt.timezone.utc)
     if t.tzinfo is None:
         return _as_ro_local(t)
     return t.astimezone(dt.timezone.utc)
@@ -280,9 +293,17 @@ def _parse_date(s: str | None) -> dt.datetime | None:
 _XML_ENT = {"amp", "lt", "gt", "quot", "apos"}
 
 
+def _prolog_encoding(raw: bytes) -> str | None:
+    m = re.match(rb"\s*<\?xml[^>]*encoding=[\"']([A-Za-z0-9._-]+)[\"']", raw)
+    return m.group(1).decode("ascii") if m else None
+
+
 def _fix_entities(raw: bytes) -> bytes:
     """Înlocuiește doar entitățile HTML necunoscute XML-ului (ex. &nbsp;) cu referințe numerice."""
-    text = raw.decode("utf-8", "replace")
+    try:
+        text = raw.decode(_prolog_encoding(raw) or "utf-8", "replace")
+    except LookupError:
+        text = raw.decode("utf-8", "replace")
 
     def rep(m):
         name = m.group(1)
@@ -357,7 +378,18 @@ class Feed(Collector):
         self.strip_source = "news.google." in url
 
     def poll(self, now):
-        items = parse_feed(self._get(self.url).body)
+        r = self._get(self.url)
+        body = r.body
+        ctype = r.headers.get("content-type", "")
+        if "charset=" in ctype and not _prolog_encoding(body):
+            # encoding declarat doar în antetul HTTP: îl aplicăm noi
+            cs = ctype.split("charset=")[-1].split(";")[0].strip().strip('"')
+            try:
+                text = body.decode(cs, "replace")
+                body = re.sub(r"^\s*<\?xml[^>]*\?>", "", text).encode("utf-8")
+            except LookupError:
+                pass
+        items = parse_feed(body)
         out = []
         for it in items:
             title, summary = it["title"][:500], it["summary"]

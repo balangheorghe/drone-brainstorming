@@ -56,7 +56,7 @@ GAZETTEER: list[Place] = [
     _p("mykolaiv", "Mykolaiv", "UA", 46.975, 31.995, ["миколаї", "миколаїв", "николаев", "mykolaiv"], MYK),
     # --- R. Moldova ---
     _p("chisinau", "Chișinău", "MD", 47.011, 28.861, ["chisinau", "кишин"]),
-    _p("balti", "Bălți", "MD", 47.762, 27.929, ["re:balti\\b", "бельц", "бєльц"]),
+    _p("balti", "Bălți", "MD", 47.762, 27.929, ["re:balti(?:ul|ului)?\\b", "бельц", "бєльц"]),
     _p("soroca", "Soroca", "MD", 48.156, 28.297, ["soroca", "сороцьк", "сорокск"]),
     _p("otaci", "Otaci", "MD", 48.43, 27.79, ["otaci", "отач"]),
     _p("ocnita", "Ocnița", "MD", 48.385, 27.437, ["ocnit", "окниц"]),

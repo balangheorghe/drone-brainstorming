@@ -13,6 +13,8 @@ try:  # imaginea Docker instalează tzdata; aici avem și o rezervă fără ea
 except Exception:  # pragma: no cover - doar când lipsește tzdata
     _RO = None
 
+RO_TZ = _RO
+
 
 def now() -> dt.datetime:
     return dt.datetime.now(UTC)

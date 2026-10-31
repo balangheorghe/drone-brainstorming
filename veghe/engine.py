@@ -96,6 +96,9 @@ class Engine:
         self._next_id = int(store.kv_get("next_hypothesis_id", "1")) if store else 1
         self.last_official: dict[str, dt.datetime] = {}
         self.last_end: dict[str, dt.datetime] = {}
+        # momentul (după data semnalului) ultimei alerte / încetări pe județ – contra știrilor întârziate
+        self.alerted_at: dict[str, dt.datetime] = {}
+        self.ended_at: dict[str, dt.datetime] = {}
         self.adsb_anomaly: dict[str, bool] = {}
         self.clock_skew_warned = False
         self._watch_titles = list(cfg.watch_oblasts) + list(cfg.watch_raions)
@@ -181,7 +184,8 @@ class Engine:
         return msgs
 
     def _tg_alert(self, sig: Signal, now) -> list[Message]:
-        n = normalize(sig.text)
+        # pe linii: normalize() ar transforma rândurile noi în spații și ar lipi rândul următor de localitate
+        n = "\n".join(normalize(line) for line in sig.text.splitlines())
         for rx, on in ((TG_OFF, False), (TG_ON, True)):
             for m in rx.finditer(n):
                 for loc in re.split(r",| та | і ", m.group(1)):
@@ -306,12 +310,21 @@ class Engine:
         src = "operator (RO-Alert primit)" if sig.role == "manual" else (_domain(sig.url) or sig.source)
         title = self._excerpt(sig.text, 180)
         n = normalize(sig.text)
+        when = sig.when
+        if f.end and re.search(r"(?<!\w)(?:nou|noua|un nou|adapost|incursiune)", n):
+            # titlu amestecat („a încetat în X, dar RO-Alert nou în Y”): doar intern, decide operatorul
+            self._event(Level.OFICIAL, None, "amestecat", title, now)
+            return [Message("internal", "verificare",
+                            f"[INTERN] DE VERIFICAT · {hhmm(now)}. Titlu cu încetare ȘI alertă nouă ({', '.join(counties)}): "
+                            f"«{title}»{link}. Nu s-a pregătit niciun mesaj public.", Level.OFICIAL, origin_role=sig.role)]
         if f.end:
-            fresh = [c for c in counties if c not in self.last_end or now - self.last_end[c] > repeat]
+            fresh = [c for c in counties if (c not in self.last_end or now - self.last_end[c] > repeat)
+                     and not (c in self.alerted_at and when < self.alerted_at[c])]  # încetare mai veche decât alerta
             if not fresh:
                 return []
             for c in fresh:
                 self.last_end[c] = now
+                self.ended_at[c] = max(self.ended_at.get(c, when), when)
                 self.last_official.pop(c, None)  # o alertă nouă după încetare va fi luată în seamă
             self._event(Level.INCHEIAT, None, "incetare", title, now)
             return [
@@ -326,11 +339,13 @@ class Engine:
         aerial = f.drone or "spatiu aerian" in n or "spatiul aerian" in n or "obiecte" in n
         if not (f.roalert and aerial):
             return []
-        fresh = [c for c in counties if c not in self.last_official or now - self.last_official[c] > repeat]
+        fresh = [c for c in counties if (c not in self.last_official or now - self.last_official[c] > repeat)
+                 and not (c in self.ended_at and when <= self.ended_at[c])]  # știre întârziată despre o alertă încheiată
         if not fresh:
             return []
         for c in fresh:
             self.last_official[c] = now
+            self.alerted_at[c] = max(self.alerted_at.get(c, when), when)
             self.last_end.pop(c, None)
         near = [p for p in county_places if p.name in fresh]
         for h in self.open_hyps():

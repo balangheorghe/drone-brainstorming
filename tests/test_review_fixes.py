@@ -66,9 +66,14 @@ def test_internal_message_is_retried_until_telegram_gets_it():
     assert d.flush() == 1 and tg.got == ["salut"] and st.get_outbox(oid)["status"] == "sent"
 
 
+class HttpFailSender(FlakySender):
+    def send(self, text):
+        raise http.HttpError(500, "eroare server")
+
+
 def test_public_failure_backs_off_then_notifies_operators():
     st = Store(":memory:")
-    d = Dispatcher(st, [OkConsole()], [FlakySender(fails=99)], public_enabled=True, max_attempts=3)
+    d = Dispatcher(st, [OkConsole()], [HttpFailSender(0)], public_enabled=True, max_attempts=3)
     oid = d.submit(Message("public", "retransmitere", "[NEOFICIAL] x", origin_role="ro_official_news"))
     d.approve(oid, "42")
     for _ in range(3):
@@ -77,6 +82,38 @@ def test_public_failure_backs_off_then_notifies_operators():
         st.set_outbox(oid, next_attempt_at=iso(now() - dt.timedelta(seconds=1)))
     assert st.get_outbox(oid)["status"] == "failed"
     assert any("NU a putut fi trimis" in r["text"] for r in st.outbox("queued"))
+
+
+def test_public_send_without_reply_is_not_retried_automatically():
+    # fără răspuns de la server (timeout): mesajul poate fi deja publicat → nu-l retrimitem singuri
+    st = Store(":memory:")
+    d = Dispatcher(st, [OkConsole()], [FlakySender(fails=1)], public_enabled=True)
+    oid = d.submit(Message("public", "retransmitere", "[NEOFICIAL] x", origin_role="ro_official_news"))
+    d.approve(oid, "42")
+    d.flush()
+    assert st.get_outbox(oid)["status"] == "unknown"
+    assert any("NECUNOSCUTĂ" in r["text"] for r in st.outbox("queued"))
+
+
+def test_new_messages_are_not_starved_by_rows_waiting_for_retry():
+    st = Store(":memory:")
+    tg = FlakySender(fails=0)
+    d = Dispatcher(st, [tg], [])
+    for i in range(60):
+        oid = d.submit(Message("internal", "x", f"vechi {i}"))
+        st.set_outbox(oid, attempts=1, next_attempt_at=iso(now() + dt.timedelta(minutes=10)))
+    d.submit(Message("internal", "apropiere", "URGENT"))
+    d.flush()
+    assert tg.got == ["URGENT"]
+
+
+def test_approve_cannot_resurrect_an_expired_message():
+    st = Store(":memory:")
+    d = Dispatcher(st, [], [object()], public_enabled=True)
+    oid = d.submit(Message("public", "retransmitere", "[NEOFICIAL] x", origin_role="ro_official_news"))
+    st.set_outbox(oid, created_at=iso(now() - dt.timedelta(minutes=31)))  # expirat, dar încă „pending” în DB
+    assert "nu poate fi aprobat" in d.approve(oid, "42")
+    assert st.get_outbox(oid)["status"] == "expired"
 
 
 def test_pending_public_messages_expire():
@@ -129,7 +166,7 @@ def test_commands_only_from_internal_group_or_private_chat_and_fresh():
 def test_check_private_refuses_channels_and_public_groups(monkeypatch):
     s = TelegramSender("t", "-100")
     for result, bad in [({"type": "channel"}, True), ({"type": "supergroup", "username": "x"}, True),
-                        ({"type": "supergroup"}, False)]:
+                        ({"type": "supergroup"}, False), ({"type": "private", "username": "ion_operator"}, False)]:
         monkeypatch.setattr(http, "request", lambda *a, r=result, **k: http.Response(200, {}, json.dumps({"result": r}).encode()))
         assert bool(s.check_private()) == bad
 
@@ -144,6 +181,12 @@ def test_config_rejects_same_internal_and_public_chat_and_bad_roles_and_types():
         build_collectors(Config({"sources": {"rss": [{"name": "x", "url": "u", "role": "ua_direction"}]}}))
     with pytest.raises(ConfigError):
         build_collectors(Config({"general": {"http_timeout": "15"}}))
+    with pytest.raises(ConfigError):
+        build_collectors(Config({"sources": {"telegram": {"channel": "x"}}}))  # tabel simplu, nu listă
+    with pytest.raises(ConfigError):
+        build_collectors(Config({"sources": {"rss": [{"name": "x"}]}}))  # fără url
+    with pytest.raises(ConfigError):
+        build_collectors(Config({"watch": {"ua_oblasts": "Одеська область"}}))  # text, nu listă
 
 
 # ---------------------------------------------------------------- text
@@ -151,6 +194,7 @@ def test_config_rejects_same_internal_and_public_chat_and_bad_roles_and_types():
     ("Drone rusești au încălcat spațiul aerian al statelor baltice", "balti", False),
     ("Marea Baltică", "balti", False),
     ("drona s-a îndreptat spre Bălți", "balti", True),
+    ("deasupra Bălțiului", "balti", True),
     ("sirenele din Nisporeni", "reni", False),
     ("Ударні БпЛА на півдні Вінниччини", "vinnytsia", True),
     ("БпЛА у Чернівецькій області", "chernivtsi", True),
@@ -188,6 +232,32 @@ def test_second_alert_after_end_in_same_hour_is_not_dropped():
         k += [m.kind for m in e.process(sig("ro_official_news", txt, T0 + dt.timedelta(minutes=15 * i)), T0 + dt.timedelta(minutes=15 * i))
               if m.channel == "public"]
     assert k == ["retransmitere", "incetare", "retransmitere", "incetare"]
+
+
+def test_late_alert_article_after_end_does_not_reopen():
+    e = eng()
+    out = []
+    for t_min, pub_min, txt in [(0, 0, "RO-Alert în județul Iași: posibilă incursiune de drone"),
+                                (21, 21, "Alerta a încetat în județul Iași"),
+                                (30, 5, "RO-Alert în județul Iași: posibilă incursiune de drone (articol întârziat)"),
+                                (40, 22, "Alerta a încetat în județul Iași (alt articol)")]:
+        t = T0 + dt.timedelta(minutes=t_min)
+        out += [m.kind for m in e.process(sig("ro_official_news", txt, t, pub=T0 + dt.timedelta(minutes=pub_min)), t)
+                if m.channel == "public"]
+    assert out == ["retransmitere", "incetare"]
+
+
+def test_mixed_end_and_new_alert_headline_goes_to_operator_only():
+    e = eng()
+    msgs = e.process(sig("ro_official_news", "Alerta a încetat în Vaslui, dar RO-Alert nou pentru drone în județul Iași", T0), T0)
+    assert [m.channel for m in msgs] == ["internal"] and msgs[0].kind == "verificare"
+
+
+def test_multiline_air_alert_post():
+    e = eng()
+    txt = "🔴 17:00 Повітряна тривога в Одеська область\nСлідкуйте за подальшими повідомленнями.\n#Одеська_область"
+    e.process(sig("ua_alerts", txt, T0, source="telegram:air_alert_ua"), T0)
+    assert "Одеська область" in e._active_titles(T0)
 
 
 def test_public_text_is_a_fixed_template_without_the_headline():
@@ -262,6 +332,21 @@ def test_feed_encoding_from_prolog_and_naive_dates_are_local_time():
     assert it["title"] == "Дрон"
     assert it["published_at"] == dt.datetime(2026, 10, 31, 15, 4, tzinfo=UTC)  # 17:04 EET = 15:04 UTC
     assert C._parse_date("Sat, 31 Oct 2026 17:04:00 EET") == dt.datetime(2026, 10, 31, 15, 4, tzinfo=UTC)
+    assert C._parse_date("Sat, 31 Oct 2026 15:00:00 -0000") == dt.datetime(2026, 10, 31, 15, 0, tzinfo=UTC)
+    assert C._parse_date("Sat, 31 Oct 2026 16:00:00 CET") == dt.datetime(2026, 10, 31, 15, 0, tzinfo=UTC)
+    # în jurul schimbării orei (ora României, fără fus în text)
+    assert C._parse_date("2026-03-29T01:30:00") == dt.datetime(2026, 3, 28, 23, 30, tzinfo=UTC)
+    assert C._parse_date("2026-10-25T02:30:00") == dt.datetime(2026, 10, 24, 23, 30, tzinfo=UTC)
+
+
+def test_feed_charset_only_in_http_header():
+    class F(C.Feed):
+        def _get(self, url, headers=None):
+            body = "<rss><channel><item><title>RO-Alert în judeţul Iaşi: dronă</title></item></channel></rss>"
+            return http.Response(200, {"content-type": "application/rss+xml; charset=iso-8859-2"}, body.encode("iso-8859-2"))
+
+    sigs = F("x", "http://h/rss", "ro_official_news").poll(T0)
+    assert sigs[0].text == "RO-Alert în judeţul Iaşi: dronă"  # ISO-8859-2 are doar ş/ţ cu sedilă
 
 
 def test_tme_service_messages_skipped_and_edits_get_new_key():

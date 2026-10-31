@@ -13,7 +13,8 @@ COPY config.example.toml ./config.example.toml
 RUN mkdir -p /app/data && chown veghe:veghe /app/data && chmod 700 /app/data
 
 USER veghe
-ENV PYTHONUNBUFFERED=1 TZ=Europe/Bucharest VEGHE_STATUS_BIND=0.0.0.0 VEGHE_STATUS_PORT=8080
+# implicit, pagina de stare ascultă doar în container (127.0.0.1); compose o deschide spre gazdă
+ENV PYTHONUNBUFFERED=1 TZ=Europe/Bucharest VEGHE_STATUS_PORT=8080
 VOLUME ["/app/data"]
 
 # Dacă bucla se blochează, procesul iese singur (watchdog) și Docker îl repornește (restart policy).

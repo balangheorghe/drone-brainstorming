@@ -46,7 +46,16 @@ def request(url: str, *, method: str = "GET", headers: dict | None = None, data:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             chunks, size = [], 0
             while True:
-                chunk = r.read(65536)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HttpError(0, f"timp total depășit ({2 * timeout:.0f} s)")
+                sock = getattr(getattr(getattr(r, "fp", None), "raw", None), "_sock", None)
+                if sock is not None:
+                    sock.settimeout(max(0.1, min(timeout, remaining)))
+                try:
+                    chunk = r.read1(65536)  # se întoarce după un singur recv: termenul e verificat des
+                except (TimeoutError, OSError) as e:
+                    raise HttpError(0, f"citire întreruptă ({type(e).__name__})") from None
                 if not chunk:
                     break
                 chunks.append(chunk)

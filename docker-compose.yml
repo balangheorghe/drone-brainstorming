@@ -5,6 +5,9 @@ services:
     container_name: veghe
     restart: unless-stopped
     env_file: .env
+    environment:
+      # în container pe 0.0.0.0, dar portul e publicat DOAR pe 127.0.0.1 al serverului (mai jos)
+      VEGHE_STATUS_BIND: 0.0.0.0
     volumes:
       - ./config.toml:/app/config.toml:ro
       - ./data:/app/data
@@ -15,6 +18,8 @@ services:
     tmpfs:
       - /tmp
     cap_drop: [ALL]
+    mem_limit: 256m
+    pids_limit: 128
     security_opt:
       - no-new-privileges:true
     logging:

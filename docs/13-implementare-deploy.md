@@ -31,7 +31,7 @@
 | `python -m veghe check-sources` | citește fiecare sursă o dată și arată ce a înțeles – **prima verificare live** |
 | `python -m veghe replay tests/scenarios/2026-10-31.jsonl` | reia un incident real prin reguli, fără rețea |
 | `python -m veghe report --since 2026-11-01T14:00:00Z` | primul semnal pe fiecare nivel vs. RO-Alert înregistrat |
-| `python -m veghe roalert Iași --at 17:04` | înregistrează un RO-Alert |
+| `python -m veghe roalert Iași --at 17:04` | doar arhivează un RO-Alert (pentru raport); serviciul activ află prin `/roalert` pe Telegram |
 | `python -m veghe outbox` · `aproba N` · `respinge N` | coada de mesaje publice |
 
 ## Ce s-a validat și ce nu
@@ -39,7 +39,8 @@
 | Nivel | Rezultat | Ce dovedește |
 |---|---|---|
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
-| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec (73 de teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
+| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec (86 de teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, refuzul comenzilor neautorizate, aprobarea unui mesaj public, `check-sources`, pagina de stare |
 | **Rulare reală a serviciului** (15 s, fără acces la surse) | merge | bucla nu cade la erori de rețea, aplică pauze progresive (40 s → 10 min), `/health` și `/status` răspund, oprire curată la SIGTERM |

@@ -29,13 +29,29 @@ RSS_ROLES = {"md_official", "md_news", "ro_official_news"}
 DOWN_AFTER_ERRORS = 3
 
 
+def _str_list(v, name: str) -> list[str]:
+    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+        raise ConfigError(f"{name} trebuie să fie o listă de texte, ex. [\"Iași\"]")
+    return v
+
+
 def build_collectors(cfg: Config) -> list[C.Collector]:
     kw = {"timeout": num(cfg.get("general", "http_timeout", default=15), "general.http_timeout"),
           "user_agent": cfg.get("general", "user_agent", default=http.DEFAULT_UA)}
-    oblasts = cfg.get("watch", "ua_oblasts", default=[])
-    raions = cfg.get("watch", "ua_raions", default=[])
+    oblasts = _str_list(cfg.get("watch", "ua_oblasts", default=[]), "watch.ua_oblasts")
+    raions = _str_list(cfg.get("watch", "ua_raions", default=[]), "watch.ua_raions")
     out: list[C.Collector] = []
     s = cfg.get("sources", default={}) or {}
+    for key in ("telegram", "rss"):
+        lst = s.get(key, [])
+        if not isinstance(lst, list) or not all(isinstance(x, dict) for x in lst):
+            raise ConfigError(f"[[sources.{key}]] trebuie să fie o listă de tabele (folosiți paranteze duble)")
+    for t in s.get("telegram", []):
+        if not t.get("channel"):
+            raise ConfigError("[[sources.telegram]] fără „channel”")
+    for r in s.get("rss", []):
+        if not r.get("name") or not r.get("url"):
+            raise ConfigError("[[sources.rss]] are nevoie de „name” și „url”")
     a = s.get("alerts_in_ua", {})
     if a.get("enabled") and cfg.secret("alerts_in_ua_token"):
         out.append(C.AlertsInUA(cfg.secret("alerts_in_ua_token"), a.get("url", "https://api.alerts.in.ua/v1/alerts/active.json"),
@@ -80,7 +96,7 @@ def build_engine(cfg: Config, store) -> Engine:
     ec = EngineConfig(
         watch_oblasts=cfg.get("watch", "ua_oblasts", default=[]),
         watch_raions=cfg.get("watch", "ua_raions", default=[]),
-        watch_counties=e.get("watch_counties", d["watch_counties"].default_factory()),
+        watch_counties=_str_list(e.get("watch_counties", d["watch_counties"].default_factory()), "engine.watch_counties"),
         max_age_min=g("max_age_min"), max_age_news_min=g("max_age_news_min"), ttl_min=g("ttl_min"),
         approach_km=g("approach_km"), vigilance_quiet_min=g("vigilance_quiet_min"),
         official_repeat_min=g("official_repeat_min"), tg_alert_ttl_min=g("tg_alert_ttl_min"),
@@ -89,7 +105,8 @@ def build_engine(cfg: Config, store) -> Engine:
     return Engine(ec, store)
 
 
-def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> Dispatcher:
+def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> tuple[Dispatcher, bool]:
+    """Întoarce (dispatcher, grupul_intern_e_de_incredere)."""
     api = cfg.get("notify", "telegram_api", default="https://api.telegram.org")
     gap = num(cfg.get("notify", "telegram_min_interval", default=3.1), "notify.telegram_min_interval")
     internal: list = [ConsoleSender()]
@@ -109,6 +126,9 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> Dispat
                 ok = False
         if ok:
             internal.append(tg)
+        trusted = ok
+    else:
+        trusted = False
     ntfy_url = cfg.secret("ntfy_url")
     if ntfy_url and cfg.secret("ntfy_topic"):
         if "ntfy.sh" in ntfy_url and not cfg.secret("ntfy_token") and not cfg.get("notify", "allow_public_ntfy", default=False):
@@ -118,7 +138,7 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> Dispat
     if tok and cfg.secret("telegram_public_chat_id"):
         public.append(TelegramSender(tok, cfg.secret("telegram_public_chat_id"), api, gap))
     return Dispatcher(store, internal, public, public_enabled=bool(cfg.get("notify", "public_enabled", default=False)),
-                      auto_publish_official=bool(cfg.get("notify", "auto_publish_official", default=False)))
+                      auto_publish_official=bool(cfg.get("notify", "auto_publish_official", default=False))), trusted
 
 
 class App:
@@ -127,24 +147,31 @@ class App:
         self.store = store or Store(cfg.get("general", "db_path", default="data/veghe.db"))
         self.collectors = build_collectors(cfg)
         self.engine = build_engine(cfg, self.store)
-        self.dispatcher = build_dispatcher(cfg, self.store, verify_private)
+        self.dispatcher, internal_trusted = build_dispatcher(cfg, self.store, verify_private)
         self.next_due: dict[str, float] = {c.name: 0.0 for c in self.collectors}
         self.errors: dict[str, int] = {c.name: 0 for c in self.collectors}
         self.polled_ok: set[str] = set()
         self.down: set[str] = set()
         self.running: dict[str, Future] = {}
+        self.started: dict[str, float] = {}
+        self.stuck: set[str] = set()
+        self.clock_skew_s: float | None = None
+        self.boot = time.monotonic()
         self.last_cycle: dt.datetime | None = None
         self._last_kv = 0.0
-        self._last_prune = 0.0
+        self._last_prune = float("-inf")
         self.flush_in_cycle = True  # în run_forever, livrarea are firul ei
         self.stop = threading.Event()
-        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="colector")
+        # câte un fir per sursă (+rezervă): o sursă blocată nu le poate opri pe celelalte
+        self._pool = ThreadPoolExecutor(max_workers=len(self.collectors) + 2, thread_name_prefix="colector")
         self._lock = threading.RLock()
         self.commands = None
         if cfg.secret("telegram_bot_token") and cfg.operator_ids:
             self.commands = TelegramCommands(cfg.secret("telegram_bot_token"), cfg.operator_ids, self.handle_command,
                                              cfg.get("notify", "telegram_api", default="https://api.telegram.org"),
-                                             self.store, cfg.secret("telegram_internal_chat_id"))
+                                             self.store,
+                                             # dacă grupul intern nu e privat, comenzile merg doar în chat privat
+                                             cfg.secret("telegram_internal_chat_id") if internal_trusted else None)
 
     # ------------------------------------------------------------------ ciclu
     def _poll(self, c: C.Collector, t: dt.datetime):
@@ -188,18 +215,28 @@ class App:
         produced = 0
         # 1) culegem ce s-a terminat (fără să așteptăm sursele lente)
         for name, fut in list(self.running.items()):
+            c = next(x for x in self.collectors if x.name == name)
             if not fut.done():
+                # descărcare blocată: o tratăm ca eroare (o singură dată), ca operatorii să afle
+                if name not in self.stuck and mono - self.started[name] > 3 * c.timeout + 30:
+                    self.stuck.add(name)
+                    self.errors[name] = max(self.errors[name] + 1, DOWN_AFTER_ERRORS)
+                    self.store.health_error(name, "blocată: descărcarea nu s-a terminat")
+                    with self._lock:
+                        self._source_down(c, TimeoutError("blocată"), t)
                 continue
             del self.running[name]
-            c = next(x for x in self.collectors if x.name == name)
+            self.stuck.discard(name)
             sigs, err = fut.result()
+            self._check_clock(c)
             if err is None:
                 self.errors[name] = 0
                 self.next_due[name] = mono + c.interval
                 sample = sigs[0].text[:200] if sigs else ""
                 self.store.health_ok(name, len(sigs), sample)
                 if c.role == "ua_alert_state":
-                    self.engine.source_alive(name, t)
+                    with self._lock:
+                        self.engine.source_alive(name, t)
                 warm = name not in self.polled_ok
                 self.polled_ok.add(name)
                 produced += self.ingest(sigs, t, warmup=warm)
@@ -220,6 +257,7 @@ class App:
         for c in self.collectors:
             if c.name not in self.running and self.next_due[c.name] <= mono:
                 self.running[c.name] = self._pool.submit(self._poll, c, t)
+                self.started[c.name] = mono
         # 3) reguli dependente de timp
         with self._lock:
             msgs = self.engine.tick(t)
@@ -235,6 +273,26 @@ class App:
             self.store.prune()
             self._last_prune = mono
         return produced
+
+    def _check_clock(self, c):
+        """Compară ceasul serverului cu antetul HTTP Date al sursei (ex. un ceas care o ia înainte)."""
+        d = getattr(c, "last_date", None)
+        if not d:
+            return
+        try:
+            import email.utils
+
+            src = email.utils.parsedate_to_datetime(d)
+        except (TypeError, ValueError):
+            return
+        skew = (now() - src).total_seconds()
+        if self.clock_skew_s is None or abs(skew) < abs(self.clock_skew_s):
+            self.clock_skew_s = skew  # cea mai mică diferență observată (latența o umflă)
+        if abs(skew) > 120 and not getattr(self, "_skew_warned", False):
+            self._skew_warned = True
+            log.critical("ceasul serverului diferă cu %.0f s de sursa %s; porniți NTP", skew, c.name)
+            self._submit([Message("internal", "ceas", f"[INTERN] Ceasul serverului diferă cu ~{skew:.0f} s de surse. "
+                                                      f"Mesajele pot fi ignorate ca „vechi”. Porniți sincronizarea NTP.")])
 
     def drain(self, timeout: float = 10.0):
         """Așteaptă colectorii porniți (folosit în teste)."""
@@ -286,6 +344,9 @@ class App:
         st["surse"] = [{"sursa": r["source"], "ultima_ok": r["last_ok"], "erori_consecutive": r["error_count"],
                         "ultima_eroare": r["last_error"]} for r in self.store.health()]
         st["in_asteptare"] = len(self.store.outbox("pending_approval"))
+        st["livrari_interne_esuate_24h"] = self.store.failed_outbox_count("internal")
+        st["surse_blocate"] = sorted(self.stuck)
+        st["decalaj_ceas_s"] = round(self.clock_skew_s) if self.clock_skew_s is not None else None
         return st
 
     def status_text(self, t) -> str:
@@ -295,6 +356,12 @@ class App:
                  f"Alerte UA urmărite: {', '.join(st['alerte_ua_active']) or 'niciuna'}",
                  f"Ipoteze: {len(st['ipoteze'])} · mesaje publice în așteptare: {st['in_asteptare']}",
                  f"Surse cu erori: {', '.join(bad) or 'niciuna'}"]
+        if st["livrari_interne_esuate_24h"]:
+            lines.append(f"ATENȚIE: {st['livrari_interne_esuate_24h']} mesaje interne nelivrate în 24 h (vezi `outbox`)")
+        if st["surse_blocate"]:
+            lines.append(f"Surse blocate: {', '.join(st['surse_blocate'])}")
+        if st["decalaj_ceas_s"] is not None and abs(st["decalaj_ceas_s"]) > 120:
+            lines.append(f"Ceas decalat cu ~{st['decalaj_ceas_s']} s față de surse")
         if st["surse_stare_invechite"]:
             lines.append(f"Stare UA învechită: {', '.join(st['surse_stare_invechite'])}")
         for h in st["ipoteze"]:
@@ -324,7 +391,8 @@ class App:
     def _watchdog(self):
         """Dacă bucla principală se blochează, ieșim; Docker/systemd repornesc procesul."""
         while not self.stop.wait(30):
-            if self.last_cycle and now() - self.last_cycle > dt.timedelta(minutes=5):
+            never = self.last_cycle is None and time.monotonic() - self.boot > 300
+            if never or (self.last_cycle and now() - self.last_cycle > dt.timedelta(minutes=5)):
                 log.critical("bucla principală e blocată de peste 5 minute; ies pentru repornire")
                 os._exit(3)
 

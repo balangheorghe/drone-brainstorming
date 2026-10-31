@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS adsb_samples (
 );
 CREATE INDEX IF NOT EXISTS ix_adsb_point_ts ON adsb_samples(point, ts);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+CREATE INDEX IF NOT EXISTS ix_outbox_status ON outbox(status, id);
 """
 
 
@@ -74,6 +75,11 @@ class Store:
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(path, check_same_thread=False, timeout=30)
+        if path != ":memory:":
+            try:
+                os.chmod(path, 0o600)  # arhiva conține texte interne: doar pentru utilizatorul serviciului
+            except OSError:
+                pass
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
@@ -140,6 +146,28 @@ class Store:
             if status:
                 return list(self._db.execute(f"SELECT * FROM outbox WHERE status=? ORDER BY id {order} LIMIT ?", (status, limit)))
             return list(self._db.execute("SELECT * FROM outbox ORDER BY id DESC LIMIT ?", (limit,)))
+
+    def outbox_due(self, at: dt.datetime, limit: int = 50) -> list[sqlite3.Row]:
+        """Mesajele de trimis acum (filtrul pe next_attempt_at e ÎNAINTE de LIMIT, ca rândurile
+        în reîncercare să nu blocheze mesajele noi)."""
+        with self._lock:
+            return list(self._db.execute(
+                "SELECT * FROM outbox WHERE status='queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) "
+                "ORDER BY id LIMIT ?", (iso(at), limit)))
+
+    def cas_outbox(self, oid: int, expect_status: str, extra_where: str = "", extra_args: tuple = (), **fields) -> int:
+        """Actualizare condiționată (compare-and-set); întoarce numărul de rânduri modificate."""
+        cols = ", ".join(f"{k}=?" for k in fields)
+        with self._lock:
+            cur = self._db.execute(f"UPDATE outbox SET {cols} WHERE id=? AND status=? {extra_where}",
+                                   (*fields.values(), oid, expect_status, *extra_args))
+            self._db.commit()
+            return cur.rowcount
+
+    def failed_outbox_count(self, channel: str = "internal", since: dt.datetime | None = None) -> int:
+        with self._lock:
+            return self._db.execute("SELECT COUNT(*) FROM outbox WHERE channel=? AND status='failed' AND created_at >= ?",
+                                    (channel, iso(since or now() - dt.timedelta(hours=24)))).fetchone()[0]
 
     def get_outbox(self, oid: int) -> sqlite3.Row | None:
         with self._lock:

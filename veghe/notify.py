@@ -66,6 +66,8 @@ class TelegramSender:
                          data=json.dumps({"chat_id": self.chat_id}).encode(),
                          headers={"Content-Type": "application/json"}, timeout=20)
         res = r.json().get("result") or {}
+        if res.get("type") == "private":
+            return None  # chat 1:1 cu un operator; @username e al persoanei, nu un nume public de grup
         if res.get("type") == "channel":
             return "chatul intern e un CANAL (public sau nu); folosiți un grup privat"
         if res.get("username"):
@@ -125,16 +127,17 @@ class Dispatcher:
         row = self.store.get_outbox(oid)
         if row is None or row["channel"] != "public":
             return f"Nu există mesajul public #{oid}."
-        if row["status"] != "pending_approval":
+        # compare-and-set: nu aprobăm un mesaj care tocmai a expirat sau a fost respins
+        ok = self.store.cas_outbox(oid, "pending_approval", "AND created_at > ?", (iso(now() - PENDING_TTL),),
+                                   status="queued", approved_by=by)
+        if not ok:
+            row = self.store.get_outbox(oid)
             return f"Mesajul #{oid} are starea „{row['status']}”, nu poate fi aprobat."
-        self.store.set_outbox(oid, status="queued", approved_by=by)
         return f"Mesajul #{oid} a fost aprobat și pus la trimis."
 
     def reject(self, oid: int, by: str) -> str:
-        row = self.store.get_outbox(oid)
-        if row is None or row["status"] != "pending_approval":
+        if not self.store.cas_outbox(oid, "pending_approval", status="rejected", approved_by=by):
             return f"Mesajul #{oid} nu e în așteptare."
-        self.store.set_outbox(oid, status="rejected", approved_by=by)
         return f"Mesajul #{oid} a fost respins."
 
     def expire_pending(self) -> int:
@@ -142,8 +145,7 @@ class Dispatcher:
         for row in self.store.outbox("pending_approval", limit=200):
             created = parse_iso(row["created_at"])
             if created and now() - created > PENDING_TTL:
-                self.store.set_outbox(row["id"], status="expired")
-                n += 1
+                n += self.store.cas_outbox(row["id"], "pending_approval", status="expired")
         return n
 
     # ------------------------------------------------------------------ trimitere
@@ -153,17 +155,14 @@ class Dispatcher:
         t = now()
         with self._lock:
             self.expire_pending()
-            for row in self.store.outbox("queued", limit=50):
-                nxt = parse_iso(row["next_attempt_at"])
-                if nxt and nxt > t:
-                    continue
+            for row in self.store.outbox_due(t, limit=50):
                 if row["channel"] == "public" and not self.public_enabled:
                     self.store.set_outbox(row["id"], status="disabled")
                     continue
                 senders = self.senders.get(row["channel"]) or []
                 delivered = set(filter(None, (row["delivered"] or "").split(",")))
                 first_try = not row["attempts"]
-                errors, retry_after = [], None
+                errors, retry_after, ambiguous = [], None, False
                 for s in senders:
                     if s.name in delivered or (getattr(s, "optional", False) and not first_try):
                         continue
@@ -176,15 +175,25 @@ class Dispatcher:
                         if not getattr(s, "optional", False):
                             delivered.add(s.name)
                     except Exception as e:  # noqa: BLE001 - orice eroare de rețea
-                        errors.append(f"{s.name}: {type(e).__name__}")
+                        code = f" {e.status}" if isinstance(e, http.HttpError) else ""
+                        errors.append(f"{s.name}: {type(e).__name__}{code}")
                         if isinstance(e, http.HttpError) and e.retry_after:
                             retry_after = max(retry_after or 0, e.retry_after)
+                        # fără răspuns de la server (timeout etc.): mesajul poate să fi plecat deja
+                        if not isinstance(e, http.HttpError):
+                            ambiguous = True
                 required = {s.name for s in senders if not getattr(s, "optional", False)}
                 attempts = (row["attempts"] or 0) + 1
                 fields = {"attempts": attempts, "delivered": ",".join(sorted(delivered)), "error": "; ".join(errors)[:500] or None}
                 if required <= delivered:
                     self.store.set_outbox(row["id"], status="sent", sent_at=iso(now()), **fields)
                     sent += 1
+                elif row["channel"] == "public" and ambiguous:
+                    # nu reîncercăm automat un mesaj public care poate fi deja publicat (ar apărea de două ori)
+                    self.store.set_outbox(row["id"], status="unknown", **fields)
+                    self.store.enqueue("internal", "esec", f"[INTERN] Mesajul public #{row['id']} are stare NECUNOSCUTĂ "
+                                       f"(fără răspuns de la Telegram). Verificați canalul public; NU s-a reîncercat automat.",
+                                       "queued")
                 elif attempts >= self.max_attempts:
                     self.store.set_outbox(row["id"], status="failed", **fields)
                     log.error("mesajul #%s nu a putut fi livrat: %s", row["id"], errors)

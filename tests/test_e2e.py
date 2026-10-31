@@ -273,3 +273,26 @@ def test_first_poll_does_not_act_on_undated_items(tmp_path, upstream, env):
     assert app.ingest([s], dt.datetime.now(UTC), warmup=True) == 0  # fără dată, la pornire: doar arhivat
     s2 = Signal("rss:md", "md_news", "O dronă în raionul Soroca, Republica Moldova", dt.datetime.now(UTC))
     assert app.ingest([s2], dt.datetime.now(UTC), warmup=False) > 0
+
+
+def test_stuck_download_is_reported_as_source_down(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    gate = threading.Event()
+    md = next(c for c in app.collectors if c.name == "rss:md")
+    md.poll = lambda t: gate.wait(30) and []
+    app.run_cycle()
+    app.started["rss:md"] -= 10_000  # simulăm o descărcare blocată de mult timp
+    app.run_cycle()
+    gate.set()
+    assert "rss:md" in app.status()["surse_blocate"] or any(
+        "SURSĂ CĂZUTĂ" in r["text"] and "rss:md" in r["text"] for r in app.store.outbox(limit=100))
+    assert any("SURSĂ CĂZUTĂ" in r["text"] and "rss:md" in r["text"] for r in app.store.outbox(limit=100))
+
+
+def test_untrusted_internal_group_disables_group_commands(tmp_path, upstream, env, monkeypatch):
+    from veghe import notify
+
+    monkeypatch.setattr(notify.TelegramSender, "check_private", lambda self: "chatul intern are nume public (@x)")
+    app = App(load(str(write_config(tmp_path, upstream.base))), verify_private=True)
+    assert [s.name for s in app.dispatcher.senders["internal"]] == ["console"]
+    assert app.commands.internal_chat is None  # comenzile merg doar în chat privat cu botul
