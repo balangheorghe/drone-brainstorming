@@ -228,7 +228,7 @@ class Engine:
                     f"{pos}. Text: «{self._excerpt(sig.text)}» ({src}){self._adsb_note()}")
         elif kind == "moldova":
             text = (f"[INTERN] ATENȚIE · {hhmm(now)} · H-{h.id}. R. Moldova: dronă{jet} semnalată. {pos}. "
-                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note()} Verificați RO-Alert; pregătiți retransmiterea.")
+                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note()} Un RO-Alert poate urma.")
         else:  # apropiere
             text = (f"[INTERN] APROPIERE · {hhmm(now)} · H-{h.id}. Dronă{jet} aproape de Prut / {self.cfg.target.name}. {pos}. "
                     f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note()} "

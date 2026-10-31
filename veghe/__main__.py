@@ -4,7 +4,7 @@
   check-sources   citește fiecare sursă o dată și arată ce a înțeles (validarea live)
   replay FIȘIER   trece un scenariu JSONL prin motor (fără rețea, fără trimitere)
   report          cronologie pe un interval: primul semnal pe fiecare nivel vs. RO-Alert
-  roalert JUDEȚ [--at HH:MM]   înregistrează un RO-Alert primit (adevărul de referință)
+  roalert JUDEȚ [--at HH:MM]   opțional: notează ora exactă a unui RO-Alert (altfel se ia din presă)
   outbox | aproba N | respinge N   coada de mesaje publice
 """
 
@@ -106,12 +106,33 @@ def cmd_report(args):
         lv = int(e["level"] or 0)
         first.setdefault(lv, parse_iso(e["ts"]))
     ro = min((parse_iso(r["published_at"]) or parse_iso(r["received_at"]) for r in sigs), default=None)
+    ro_label = "înregistrat de operator"
+    if ro is None:
+        ro = news_roalert_time(st, evs, t0, t1)
+        ro_label = "din presă, ora publicării; alerta reală a fost cu câteva minute mai devreme"
     print(f"Interval {hhmm(t0)} – {hhmm(t1)} ({to_local(t0):%d.%m})")
     for lv in sorted(first):
         lead = f" · avans față de RO-Alert: {(ro - first[lv]).total_seconds() / 60:+.0f} min" if ro else ""
         print(f"  primul semnal „{LEVEL_RO[Level(lv)]}”: {hhmm(first[lv])}{lead}")
-    print(f"  RO-Alert (înregistrat de operator): {hhmm(ro) if ro else 'neînregistrat'}")
+    print(f"  RO-Alert ({ro_label}): {hhmm(ro)}" if ro else "  RO-Alert: negăsit (nici în presă, nici înregistrat)")
     print(f"  evenimente: {len(evs)}")
+
+
+def news_roalert_time(st: Store, evs, t0: dt.datetime, t1: dt.datetime) -> dt.datetime | None:
+    """Ora publicării primei știri care a produs un mesaj OFICIAL (fără nicio înregistrare manuală).
+    Evenimentul OFICIAL păstrează titlul știrii; îl potrivim cu semnalul arhivat ca să aflăm ora publicării."""
+    from .engine import Engine
+
+    titles = {e["text"] for e in evs if int(e["level"] or 0) == Level.OFICIAL and e["kind"] == "oficial"}
+    if not titles:
+        return None
+    times = []
+    for r in st.signals_between(t0, t1 + dt.timedelta(hours=1)):
+        if r["role"] == "ro_official_news" and Engine._excerpt(r["text"], 180) in titles:
+            times.append(parse_iso(r["published_at"]) or parse_iso(r["received_at"]))
+    if not times:  # semnalul nu se găsește: ora la care serviciul a aflat
+        times = [parse_iso(e["ts"]) for e in evs if e["text"] in titles]
+    return min(times, default=None)
 
 
 def cmd_roalert(args):

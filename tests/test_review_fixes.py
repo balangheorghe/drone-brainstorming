@@ -442,3 +442,38 @@ def test_report_finds_roalert_logged_hours_later(tmp_path, capsys):
           "--to", iso(T0 + dt.timedelta(minutes=60))])
     out = capsys.readouterr().out
     assert "neînregistrat" not in out and "+8 min" in out
+
+
+def test_report_uses_news_roalert_without_any_manual_entry(tmp_path, capsys):
+    """Fără nicio intervenție: raportul ia ora RO-Alert din știrea care a produs mesajul OFICIAL."""
+    from veghe.__main__ import main
+
+    db = tmp_path / "v.db"
+    (tmp_path / "c.toml").write_text(f'[general]\ndb_path = "{db}"\n', encoding="utf-8")
+    st = Store(str(db))
+    with open("tests/scenarios/2026-10-31.jsonl", encoding="utf-8") as f:
+        run_replay(f.readlines(), store=st)
+    st.close()
+    main(["--config", str(tmp_path / "c.toml"), "report", "--since", "2026-10-31T13:00:00Z",
+          "--to", "2026-10-31T16:00:00Z"])
+    out = capsys.readouterr().out
+    assert "RO-Alert (din presă" in out and "17:05" in out      # prima știre RO-Alert, ora României
+    assert "avans față de RO-Alert: +55 min" in out               # vigilență 16:10 → RO-Alert 17:05
+
+
+def test_report_news_roalert_uses_publication_time_not_arrival(tmp_path, capsys):
+    from veghe.__main__ import main
+
+    db = tmp_path / "v.db"
+    (tmp_path / "c.toml").write_text(f'[general]\ndb_path = "{db}"\n', encoding="utf-8")
+    st = Store(str(db))
+    line = json.dumps({"t": iso(T0 + dt.timedelta(minutes=12)), "published_at": iso(T0 + dt.timedelta(minutes=6)),
+                       "source": "rss:gnews_ro_roalert", "role": "ro_official_news",
+                       "text": "RO-Alert în județul Iași: posibilă incursiune de drone"})
+    run_replay([line], store=st)
+    st.add_event(3, 1, "moldova", "x", T0)
+    st.close()
+    main(["--config", str(tmp_path / "c.toml"), "report", "--since", iso(T0 - dt.timedelta(minutes=30)),
+          "--to", iso(T0 + dt.timedelta(minutes=60))])
+    out = capsys.readouterr().out
+    assert "din presă" in out and "+6 min" in out and "negăsit" not in out
