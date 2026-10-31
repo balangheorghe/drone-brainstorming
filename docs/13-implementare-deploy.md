@@ -75,7 +75,7 @@ Singurele acțiuni: instalarea o dată și `check-sources` la început. În rest
 
 ```bash
 # pe server
-git clone -b claude/iasi-drone-early-warning https://github.com/balangheorghe/drone-brainstorming.git veghe && cd veghe
+git clone -b master https://github.com/balangheorghe/drone-brainstorming.git veghe && cd veghe
 cp config.example.toml config.toml        # ajustați dacă e cazul
 cp .env.example .env && nano .env         # completați token-urile
 mkdir -p data && sudo chown 10001:10001 data   # utilizatorul din container
@@ -86,7 +86,7 @@ docker compose logs -f                    # urmăriți primele minute
 chmod 600 .env                            # secretele doar pentru voi
 ```
 
-Actualizare ulterioară: `git pull && docker compose build && docker compose up -d`. (Codul e pe branch-ul `claude/iasi-drone-early-warning` până la unirea în `master`.)
+Actualizare ulterioară: `git pull && docker compose build && docker compose up -d`.
 
 Pe Telegram, în grupul privat: `/stare`. Pagina de stare e disponibilă doar pe server: `curl http://127.0.0.1:8080/status` (sau printr-un tunel SSH).
 
@@ -100,7 +100,7 @@ Pe Telegram, în grupul privat: `/stare`. Pagina de stare e disponibilă doar pe
 
 ```bash
 sudo useradd --system --home /opt/veghe veghe
-sudo git clone -b claude/iasi-drone-early-warning https://github.com/balangheorghe/drone-brainstorming.git /opt/veghe
+sudo git clone -b master https://github.com/balangheorghe/drone-brainstorming.git /opt/veghe
 cd /opt/veghe && sudo cp config.example.toml config.toml && sudo cp .env.example .env   # completați .env
 sudo mkdir -p data && sudo chown -R veghe:veghe /opt/veghe/data
 sudo -u veghe bash -c 'set -a; . ./.env; python3 -m veghe check-sources'
