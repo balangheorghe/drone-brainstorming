@@ -6,7 +6,7 @@
 
 1. **Alerta ucraineană pe raioane e un filtru bun, nu o alarmă.** La **toate cele 8** detecții anunțate de R. Moldova în 2026 pentru care avem date oficiale pe raioane, alerta aeriană era deja activă în regiunea ucraineană de unde venea drona, pornită cu **12–424 de minute** înainte (de obicei 30–110). Dar alerta e activă **~19% din timp** în regiunea Odesa și **~22%** dacă adăugăm Vinnytsia și Chernivtsi. Folosită ca „stare de vigilență”, reduce de ~5 ori timpul de pândă fără să rateze cazurile observate.
 2. **Sursele publice moldovenești vin prea târziu ca să bată RO-Alert.** Pe 31.10, drona a fost detectată la 16:24, dar primul articol moldovenesc a apărut la **16:57**, cu ~7 minute înaintea RO-Alert-ului de la 17:04. Pe 8.09, **niciun** articol moldovenesc nu a apărut înainte de RO-Alert.
-3. **RO-Alert e declanșat pe canale oficiale, nepublice, între instituții.** Pe 8.09, RO-Alert (16:30) a plecat înaintea detecției radar românești (16:33); IGSU a vorbit de o dronă „în spațiul aerian al R. Moldova… spre Iași”. Pe 12.09, alerta din Botoșani a pornit de la o semnalare a centrelor de operații aeriene din Ucraina și R. Moldova. Deci autoritățile primesc deja datele din amonte.
+3. **RO-Alert e declanșat pe canale oficiale, nepublice, între instituții.** Pe 8.09, după orele publicate, RO-Alert (16:30) a plecat chiar înaintea detecției radar românești (16:33) – inferență din ore rotunjite; IGSU a vorbit de o dronă „în spațiul aerian al R. Moldova… spre Iași”. Pe 12.09, alerta din Botoșani a pornit de la o semnalare a centrelor de operații aeriene din Ucraina și R. Moldova. Deci autoritățile primesc deja datele din amonte.
 4. **Singurele semnale publice care vin clar înaintea RO-Alert sunt ucrainene**: alerte pe raioane și mesaje de monitorizare de tipul „drone cu reacție … curs nord-vest” (8.09, la 16:09–16:11, cu ~20 de minute înainte). Sunt nespecifice și nu se republică.
 5. **Ruta nordică (reg. Vinnița / Cernăuți → nordul R. Moldova → Botoșani)** e la fel de importantă ca ruta prin Transnistria: a doua dronă din 31.10 și cea din 23.10 au venit din reg. Vinnița; cele din 12.09 și 16.10 au intrat prin Soroca; cea din 24.09 a venit din reg. Cernăuți spre Solca.
 
@@ -39,6 +39,8 @@ Script: [`analysis/ua_alerts_analysis.py`](../analysis/ua_alerts_analysis.py) ·
 După 7 septembrie avem doar date de voluntari, care ratează alertele pe raioane: ele arată alertă activă doar în 2 din 8 cazuri (inclusiv 8.09). Cazurile 31.10 vor apărea în set de mâine.
 
 ### 1.2 Cât timp e activă alerta (rate de bază, 1.01–7.09.2026, date oficiale)
+
+*Atenție: în septembrie–octombrie alertele din Vinnytsia și Chernivtsi s-au triplat (§1.3), deci acum filtrul e activ mai des decât arată media de mai jos.*
 
 | Regiune UA | % din timp cu alertă în oricare raion |
 |---|---|
