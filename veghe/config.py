@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
 
@@ -87,7 +88,13 @@ def validate(cfg: Config) -> list[str]:
     if cfg.get("notify", "public_enabled", default=False) and not cfg.secret("telegram_public_chat_id"):
         warnings.append("public_enabled = true, dar TELEGRAM_PUBLIC_CHAT_ID lipsește → canalul public rămâne oprit")
     if cfg.secret("telegram_bot_token") and not cfg.operator_ids:
-        warnings.append("TELEGRAM_OPERATOR_IDS lipsește → nimeni nu poate da comenzi (/aproba, /roalert)")
+        warnings.append("TELEGRAM_OPERATOR_IDS gol (opțional) → comenzile /stare, /roalert, /aproba sunt dezactivate; "
+                        "alertele interne se trimit oricum")
+    for name in ("telegram_internal_chat_id", "telegram_public_chat_id"):
+        v = cfg.secret(name)
+        if v and not re.fullmatch(r"-?\d+", v):
+            warnings.append(f"{name.upper()} = {v[:40]!r} nu e un număr (ex. -1001234567890); verificați .env "
+                            f"(fără spații sau comentarii pe același rând)")
     for w in warnings:
         log.warning(w)
     return warnings

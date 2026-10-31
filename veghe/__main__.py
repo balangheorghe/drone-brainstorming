@@ -36,6 +36,7 @@ def cmd_run(args):
 def cmd_check_sources(args):
     from .app import build_collectors
 
+    logging.getLogger("veghe.config").setLevel(logging.ERROR)  # avertismentele apar o singură dată, ca ATENȚIE
     cfg = load(args.config)
     warnings = validate(cfg)
     t = now()
@@ -57,7 +58,48 @@ def cmd_check_sources(args):
             extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}" if s.role in ("ua_alert_state", "adsb") else ""
             print(f"      · {s.text[:140]}{extra}")
     print(f"\n{ok}/{len(cols)} surse au răspuns corect.")
-    return 0 if ok == len(cols) else 1
+    print("\nLivrarea alertelor:")
+    delivery_ok = check_delivery(cfg, t)
+    return 0 if ok == len(cols) and delivery_ok else 1
+
+
+def check_delivery(cfg, t) -> bool:
+    """Trimite un mesaj de test în grupul intern (și pe ntfy, dacă e configurat). Fără asta, un ID
+    de grup greșit ar însemna alerte care nu ajung nicăieri, fără ca cineva să afle."""
+    from .app import build_dispatcher
+    from .notify import NtfySender, TelegramSender, describe_error
+
+    text = (f"[INTERN] veghe {__version__} · test de livrare (check-sources) · {hhmm(t)}. "
+            f"Dacă vedeți acest mesaj, alertele vor ajunge aici.")
+    tok, chat = cfg.secret("telegram_bot_token"), cfg.secret("telegram_internal_chat_id")
+    api = cfg.get("notify", "telegram_api", default="https://api.telegram.org")
+    good = True
+    if tok and chat:
+        tg = TelegramSender(tok, chat, api, 0)
+        try:
+            reason = None if cfg.get("notify", "allow_unverified_internal_chat", default=False) else tg.check_private()
+            if reason:
+                print(f"✗ telegram intern {chat}: {reason} (nu s-a trimis nimic)")
+                good = False
+            else:
+                tg.send(text)
+                print(f"✓ telegram intern {chat}: mesaj de test trimis – verificați că a apărut în grupul privat")
+        except Exception as e:  # noqa: BLE001
+            print(f"✗ telegram intern {chat}: {describe_error(e)}")
+            good = False
+    else:
+        print("✗ telegram intern: TELEGRAM_BOT_TOKEN / TELEGRAM_INTERNAL_CHAT_ID lipsesc → alertele apar doar în jurnal")
+        good = False
+    dispatcher, _ = build_dispatcher(cfg, Store(":memory:"))
+    for s in dispatcher.senders["internal"]:
+        if isinstance(s, NtfySender):
+            try:
+                s.send(text)
+                print(f"✓ {s.name}: mesaj de test trimis")
+            except Exception as e:  # noqa: BLE001
+                print(f"✗ {s.name}: {describe_error(e)}")
+                good = False
+    return good
 
 
 def run_replay(lines, engine=None, store=None):
@@ -94,45 +136,73 @@ def cmd_replay(args):
     print(f"{len(res)} mesaje ({sum(1 for _, m in res if m.channel == 'public')} publice, care ar aștepta aprobare).")
 
 
+# evenimentele care înseamnă „am aflat ceva” (fără cele de întreținere: oprirea vigilenței, ADS-B, închideri)
+SIGNAL_KINDS = {"vigilenta_start", "directie", "moldova", "apropiere", "oficial"}
+
+
 def cmd_report(args):
+    from .config import num
+
     cfg = load(args.config)
     st = Store(cfg.get("general", "db_path", default="data/veghe.db"))
     t1 = parse_iso(args.to) if args.to else now()
     t0 = parse_iso(args.since) if args.since else t1 - dt.timedelta(hours=24)
     evs = st.events_between(t0, t1)
-    sigs = st.manual_between(t0, t1)
     first: dict[int, dt.datetime] = {}
     for e in evs:
-        lv = int(e["level"] or 0)
-        first.setdefault(lv, parse_iso(e["ts"]))
-    ro = min((parse_iso(r["published_at"]) or parse_iso(r["received_at"]) for r in sigs), default=None)
-    ro_label = "înregistrat de operator"
-    if ro is None:
-        ro = news_roalert_time(st, evs, t0, t1)
-        ro_label = "din presă, ora publicării; alerta reală a fost cu câteva minute mai devreme"
+        if e["kind"] in SIGNAL_KINDS:
+            first.setdefault(int(e["level"] or 0), parse_iso(e["ts"]))
+    end = next((parse_iso(e["ts"]) for e in evs if e["kind"] == "incetare"), None)
+    manual = st.manual_between(t0, t1)
+    if manual:
+        ro = min(parse_iso(r["published_at"]) or parse_iso(r["received_at"]) for r in manual)
+        ro_label = "înregistrat de operator"
+    else:
+        max_age = num(cfg.get("engine", "max_age_news_min", default=60), "engine.max_age_news_min")
+        ro, ro_label = roalert_from_events(st, evs, max_age)
+
+    def when(x):
+        return hhmm(x) if to_local(x).date() == to_local(t0).date() else f"{to_local(x):%d.%m} {hhmm(x)}"
+
     print(f"Interval {hhmm(t0)} – {hhmm(t1)} ({to_local(t0):%d.%m})")
     for lv in sorted(first):
         lead = f" · avans față de RO-Alert: {(ro - first[lv]).total_seconds() / 60:+.0f} min" if ro else ""
-        print(f"  primul semnal „{LEVEL_RO[Level(lv)]}”: {hhmm(first[lv])}{lead}")
-    print(f"  RO-Alert ({ro_label}): {hhmm(ro)}" if ro else "  RO-Alert: negăsit (nici în presă, nici înregistrat)")
+        print(f"  primul semnal „{LEVEL_RO[Level(lv)]}”: {when(first[lv])}{lead}")
+    print(f"  RO-Alert ({ro_label}): {when(ro)}" if ro else "  RO-Alert: negăsit (nici în presă, nici înregistrat)")
+    if end:
+        print(f"  încetare raportată: {when(end)}")
     print(f"  evenimente: {len(evs)}")
 
 
-def news_roalert_time(st: Store, evs, t0: dt.datetime, t1: dt.datetime) -> dt.datetime | None:
-    """Ora publicării primei știri care a produs un mesaj OFICIAL (fără nicio înregistrare manuală).
-    Evenimentul OFICIAL păstrează titlul știrii; îl potrivim cu semnalul arhivat ca să aflăm ora publicării."""
+def roalert_from_events(st: Store, evs, max_age_min: float) -> tuple[dt.datetime | None, str]:
+    """Ora RO-Alert fără nicio înregistrare manuală: pentru fiecare mesaj OFICIAL, găsim știrea
+    (sau înregistrarea) care l-a produs – același titlu, primită înainte de mesaj, nu mai veche
+    decât acceptă motorul – și luăm ora ei de publicare. Întoarce (ora, eticheta)."""
     from .engine import Engine
 
-    titles = {e["text"] for e in evs if int(e["level"] or 0) == Level.OFICIAL and e["kind"] == "oficial"}
-    if not titles:
-        return None
-    times = []
-    for r in st.signals_between(t0, t1 + dt.timedelta(hours=1)):
-        if r["role"] == "ro_official_news" and Engine._excerpt(r["text"], 180) in titles:
-            times.append(parse_iso(r["published_at"]) or parse_iso(r["received_at"]))
-    if not times:  # semnalul nu se găsește: ora la care serviciul a aflat
-        times = [parse_iso(e["ts"]) for e in evs if e["text"] in titles]
-    return min(times, default=None)
+    offs = [(parse_iso(e["ts"]), e["text"]) for e in evs if e["kind"] == "oficial"]
+    if not offs:
+        return None, ""
+    age = dt.timedelta(minutes=max_age_min)
+    rows = [r for r in st.signals_between(min(t for t, _ in offs) - age - dt.timedelta(minutes=5), max(t for t, _ in offs))
+            if r["role"] in ("ro_official_news", "manual")]
+    best: tuple[dt.datetime, str] | None = None
+    for ts, title in offs:
+        match = [r for r in rows if Engine._excerpt(r["text"], 180) == title and parse_iso(r["received_at"]) <= ts
+                 and (parse_iso(r["published_at"]) or parse_iso(r["received_at"])) >= ts - age]
+        if not match:
+            cand = (ts, "ora la care serviciul a aflat")
+        else:
+            r = max(match, key=lambda x: x["received_at"])  # cea care a declanșat mesajul
+            if r["role"] == "manual":
+                cand = (parse_iso(r["published_at"]) or parse_iso(r["received_at"]), "înregistrat de operator")
+            elif r["published_at"]:
+                cand = (parse_iso(r["published_at"]), "din presă, ora publicării; alerta reală a fost cu câteva minute mai devreme")
+            else:
+                cand = (parse_iso(r["received_at"]), "ora la care serviciul a aflat din presă")
+        if best is None or cand[0] < best[0]:
+            best = cand
+    return best
 
 
 def cmd_roalert(args):
@@ -145,7 +215,7 @@ def cmd_roalert(args):
     st = Store(cfg.get("general", "db_path", default="data/veghe.db"))
     at = parse_hhmm(args.at, now()) if args.at else now()
     st.add_signal(manual_roalert_signal(args.county, at, "operator:cli"))
-    print(f"Arhivat RO-Alert {args.county} la {hhmm(at)} (pentru raport). Pentru motorul activ folosiți /roalert pe Telegram.")
+    print(f"Arhivat RO-Alert {args.county} la {hhmm(at)} (doar pentru raport; serviciul pornit nu e anunțat).")
 
 
 def cmd_outbox(args):

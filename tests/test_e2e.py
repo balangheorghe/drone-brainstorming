@@ -9,6 +9,7 @@ import datetime as dt
 import json
 import pathlib
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -16,6 +17,7 @@ import pytest
 
 from veghe.app import App
 from veghe.config import load
+from veghe.store import Store
 from veghe.timeutil import UTC
 
 FIX = pathlib.Path(__file__).parent / "fixtures"
@@ -27,6 +29,7 @@ class Upstream:
         self.sent = []
         self.headers = {}
         self.updates = []
+        self.getchat = None  # (cod, corp) pentru a simula un grup greșit; implicit: supergrup privat
         now = dt.datetime.now(UTC)
         self.t1 = (now - dt.timedelta(minutes=4)).isoformat(timespec="seconds")
         self.t2 = (now - dt.timedelta(minutes=2)).isoformat(timespec="seconds")
@@ -58,6 +61,12 @@ class Upstream:
         if path == f"/tg/bot{TOKEN}/sendMessage":
             self.sent.append(json.loads(body))
             return 200, "application/json", json.dumps({"ok": True, "result": {"message_id": len(self.sent)}})
+        if path == f"/tg/bot{TOKEN}/getChat":
+            if self.getchat:
+                return self.getchat[0], "application/json", self.getchat[1]
+            cid = json.loads(body)["chat_id"]
+            return 200, "application/json", json.dumps({"ok": True, "result": {"id": int(cid), "type": "supergroup",
+                                                                                 "title": "veghe"}})
         if path == f"/tg/bot{TOKEN}/getUpdates":
             res, self.updates = self.updates, []
             return 200, "application/json", json.dumps({"ok": True, "result": res})
@@ -304,8 +313,8 @@ def test_zero_intervention_mode(tmp_path, upstream, monkeypatch):
     for k, v in {"ALERTS_IN_UA_TOKEN": "ain-secret", "UKRAINEALARM_TOKEN": "ua-secret", "TELEGRAM_BOT_TOKEN": TOKEN,
                  "TELEGRAM_INTERNAL_CHAT_ID": "-1001"}.items():
         monkeypatch.setenv(k, v)
-    for k in ("TELEGRAM_PUBLIC_CHAT_ID", "TELEGRAM_OPERATOR_IDS"):
-        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("TELEGRAM_PUBLIC_CHAT_ID", "-2002")  # chiar cu un canal public setat, flagul îl ține oprit
+    monkeypatch.delenv("TELEGRAM_OPERATOR_IDS", raising=False)
     p = write_config(tmp_path, upstream.base)
     p.write_text(p.read_text(encoding="utf-8").replace("public_enabled = true", "public_enabled = false"), encoding="utf-8")
     app = App(load(str(p)))
@@ -317,3 +326,93 @@ def test_zero_intervention_mode(tmp_path, upstream, monkeypatch):
     assert not any("așteptare" in t or "/aproba" in t for t in internal)
     assert not app.store.outbox("pending_approval")
     assert {m["chat_id"] for m in upstream.sent} == {"-1001"}
+
+
+def test_check_sources_sends_test_message_to_internal_group(tmp_path, upstream, env, capsys):
+    from veghe.__main__ import main
+
+    rc = main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "✓ telegram intern -1001" in out
+    sent = [m for m in upstream.sent if m["chat_id"] == "-1001"]
+    assert len(sent) == 1 and "test de livrare" in sent[0]["text"]
+    assert not [m for m in upstream.sent if m["chat_id"] == "-2002"]   # nimic în canalul public
+
+
+def test_check_sources_reports_wrong_internal_group(tmp_path, upstream, env, capsys):
+    from veghe.__main__ import main
+
+    upstream.getchat = (400, json.dumps({"ok": False, "error_code": 400, "description": "Bad Request: chat not found"}))
+    rc = main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 1 and "✗ telegram intern -1001" in out and "chat not found" in out
+    assert "6/6 surse au răspuns corect" in out                       # sursele merg; livrarea nu
+    assert not upstream.sent
+
+
+def test_check_sources_refuses_public_group(tmp_path, upstream, env, capsys):
+    from veghe.__main__ import main
+
+    upstream.getchat = (200, json.dumps({"ok": True, "result": {"id": -1001, "type": "supergroup", "username": "public"}}))
+    rc = main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 1 and "nume public" in out and not upstream.sent
+
+
+def test_check_sources_without_telegram_fails(tmp_path, upstream, env, monkeypatch, capsys):
+    from veghe.__main__ import main
+
+    monkeypatch.delenv("TELEGRAM_INTERNAL_CHAT_ID")
+    rc = main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 1 and "✗ telegram intern: TELEGRAM_BOT_TOKEN / TELEGRAM_INTERNAL_CHAT_ID lipsesc" in out
+
+
+def test_wrong_internal_group_is_logged_as_critical(tmp_path, upstream, env, caplog):
+    from veghe.app import build_dispatcher
+
+    upstream.getchat = (403, json.dumps({"ok": False, "error_code": 403, "description": "Forbidden: bot was kicked"}))
+    cfg = load(str(write_config(tmp_path, upstream.base)))
+    with caplog.at_level("CRITICAL", logger="veghe"):
+        build_dispatcher(cfg, Store(":memory:"), verify_private=True)
+    assert any("INACCESIBIL" in r.message and "bot was kicked" in r.message for r in caplog.records)
+
+
+def test_status_port_in_use_does_not_stop_the_service(tmp_path, upstream, env):
+    import socket as so
+
+    busy = so.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen(1)
+    port = busy.getsockname()[1]
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace("status_port = 0", f"status_port = {port}"), encoding="utf-8")
+    app = App(load(str(p)))
+    try:
+        assert app.start_status_server() is None
+    finally:
+        busy.close()
+
+
+def test_run_forever_announces_start_in_internal_group(tmp_path, upstream, env, monkeypatch):
+    monkeypatch.delenv("VEGHE_STATUS_PORT", raising=False)
+    monkeypatch.delenv("VEGHE_STATUS_BIND", raising=False)
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    th = threading.Thread(target=app.run_forever, kwargs={"cycle_seconds": 0.2}, daemon=True)
+    th.start()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not any("veghe pornit" in m["text"] for m in upstream.sent):
+        time.sleep(0.1)
+    app.stop.set()
+    th.join(10)
+    starts = [m for m in upstream.sent if "veghe pornit" in m["text"]]
+    assert len(starts) == 1 and starts[0]["chat_id"] == "-1001" and not th.is_alive()
+
+
+def test_check_sources_prints_each_warning_once(tmp_path, upstream, env, monkeypatch, capsys):
+    from veghe.__main__ import main
+
+    monkeypatch.delenv("TELEGRAM_OPERATOR_IDS")
+    main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    cap = capsys.readouterr()
+    assert cap.out.count("TELEGRAM_OPERATOR_IDS gol") == 1 and "TELEGRAM_OPERATOR_IDS" not in cap.err

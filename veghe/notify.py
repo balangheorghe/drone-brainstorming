@@ -36,6 +36,26 @@ class PublicPolicyError(Exception):
     pass
 
 
+def describe_error(e: Exception) -> str:
+    """Eroare de livrare pe înțeles (fără token: HttpError nu conține URL-ul). Pentru Telegram,
+    include explicația din răspuns („chat not found”, „bot was kicked” …)."""
+    if not isinstance(e, http.HttpError):
+        return type(e).__name__
+    desc = ""
+    body = str(e).split(" ", 2)[2] if str(e).count(" ") >= 2 else ""
+    if body.startswith("{"):
+        try:
+            desc = str(json.loads(body).get("description") or "")
+        except (ValueError, AttributeError):
+            desc = ""
+    hint = {401: "token greșit (TELEGRAM_BOT_TOKEN)",
+            403: "botul nu e în grup sau nu are voie să scrie",
+            400: "ID de chat greșit sau grupul s-a schimbat (TELEGRAM_*_CHAT_ID)",
+            404: "token greșit sau adresă API greșită"}.get(e.status, "")
+    parts = [f"HttpError {e.status}"] + [p for p in (hint, desc[:160]) if p]
+    return " · ".join(parts)
+
+
 class ConsoleSender:
     name = "console"
     min_interval = 0.0
@@ -175,8 +195,7 @@ class Dispatcher:
                         if not getattr(s, "optional", False):
                             delivered.add(s.name)
                     except Exception as e:  # noqa: BLE001 - orice eroare de rețea
-                        code = f" {e.status}" if isinstance(e, http.HttpError) else ""
-                        errors.append(f"{s.name}: {type(e).__name__}{code}")
+                        errors.append(f"{s.name}: {describe_error(e)}")
                         if isinstance(e, http.HttpError) and e.retry_after:
                             retry_after = max(retry_after or 0, e.retry_after)
                         # fără răspuns de la server (timeout etc.): mesajul poate să fi plecat deja

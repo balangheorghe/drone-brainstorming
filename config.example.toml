@@ -6,6 +6,7 @@ db_path = "data/veghe.db"
 http_timeout = 15
 log_level = "INFO"
 # Pagina de stare (/health, /status). Implicit doar local; nu o expuneți pe internet.
+# În Docker, adresa și portul vin din Dockerfile/docker-compose.yml (VEGHE_STATUS_*), nu de aici.
 status_bind = "127.0.0.1"
 status_port = 8080
 

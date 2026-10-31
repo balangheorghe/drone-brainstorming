@@ -15,7 +15,7 @@
 Codul din [`veghe/`](veghe/) citește automat sursele publice (alerte UA, canale Telegram publice, presa din MD și RO, trafic aerian civil), le arhivează cu ora exactă, aplică regulile de mai sus și trimite **mesaje interne** într-un grup Telegram privat. Mesajele publice sunt doar retransmiteri ale RO-Alert-urilor relatate oficial, din șablon fix, **după aprobarea unui operator**. Fără dependențe externe (doar Python), cu Docker și systemd.
 
 - Ghid de deploy și ce s-a validat: [docs/13-implementare-deploy.md](docs/13-implementare-deploy.md)
-- Prima comandă pe server, după configurare: `docker compose run --rm veghe check-sources`
+- Prima comandă pe server, după configurare: `docker compose run --rm veghe check-sources` (verifică sursele și trimite un mesaj de test în grupul privat)
 - Reluarea unui incident real fără rețea: `python -m veghe replay tests/scenarios/2026-10-31.jsonl`
 
 ## Ce s-a întâmplat

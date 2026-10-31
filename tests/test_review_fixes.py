@@ -477,3 +477,90 @@ def test_report_news_roalert_uses_publication_time_not_arrival(tmp_path, capsys)
           "--to", iso(T0 + dt.timedelta(minutes=60))])
     out = capsys.readouterr().out
     assert "din presă" in out and "+6 min" in out and "negăsit" not in out
+
+
+# --- verificarea dinaintea unirii în master ---------------------------------------------------
+
+def _report(tmp_path, capsys, t0, t1):
+    from veghe.__main__ import main
+
+    main(["--config", str(tmp_path / "c.toml"), "report", "--since", iso(t0), "--to", iso(t1)])
+    return capsys.readouterr().out
+
+
+def _db(tmp_path):
+    db = tmp_path / "v.db"
+    (tmp_path / "c.toml").write_text(f'[general]\ndb_path = "{db}"\n', encoding="utf-8")
+    return Store(str(db))
+
+
+def test_report_ignores_old_article_with_identical_headline(tmp_path, capsys):
+    st = _db(tmp_path)
+    text = "RO-Alert în județul Iași: posibilă incursiune de drone"
+    old = Signal(source="rss:ro", role="ro_official_news", text=text, ext_id="vechi",
+                 published_at=T0 - dt.timedelta(days=2), received_at=T0 - dt.timedelta(minutes=1))
+    new = Signal(source="rss:ro", role="ro_official_news", text=text, ext_id="nou",
+                 published_at=T0 + dt.timedelta(minutes=5), received_at=T0 + dt.timedelta(minutes=10))
+    assert st.add_signal(old) and st.add_signal(new)
+    st.add_event(5, None, "oficial", Engine._excerpt(text, 180), T0 + dt.timedelta(minutes=10))
+    st.add_event(1, None, "vigilenta_start", "x", T0 - dt.timedelta(minutes=20))
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "RO-Alert (din presă" in out and "17:05" in out and "+25 min" in out
+
+
+def test_report_mixed_headline_is_not_an_roalert(tmp_path, capsys):
+    st = _db(tmp_path)
+    line = json.dumps({"t": iso(T0), "source": "rss:gnews_ro_roalert", "role": "ro_official_news",
+                       "text": "Alerta a încetat în Iași, dar RO-Alert nou în Botoșani: posibilă incursiune de drone"})
+    run_replay([line], store=st)
+    kinds = [e["kind"] for e in st.events_between(T0 - dt.timedelta(minutes=1), T0 + dt.timedelta(minutes=1))]
+    assert kinds == ["amestecat"]
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "RO-Alert: negăsit" in out
+
+
+def test_report_manual_entry_before_window_is_labelled_operator(tmp_path, capsys):
+    """/roalert cu ora alertei înainte de --since: mesajul OFICIAL e în interval, eticheta trebuie să fie corectă."""
+    from veghe.iso_helpers import manual_roalert_signal
+
+    st = _db(tmp_path)
+    s = manual_roalert_signal("Iași", T0 - dt.timedelta(minutes=2), "operator:42")
+    s.received_at = T0 + dt.timedelta(minutes=10)
+    st.add_signal(s)
+    st.add_event(5, None, "oficial", Engine._excerpt(s.text, 180), T0 + dt.timedelta(minutes=10))
+    st.close()
+    out = _report(tmp_path, capsys, T0, T0 + dt.timedelta(minutes=60))
+    assert "RO-Alert (înregistrat de operator)" in out and "din presă" not in out
+
+
+def test_report_skips_housekeeping_events_and_shows_end(tmp_path, capsys):
+    st = _db(tmp_path)
+    st.add_event(0, None, "vigilenta_stop", "", T0)                       # nivel „fond”: nu e un semnal
+    st.add_event(0, None, "adsb_anomalie", "LUKK", T0 + dt.timedelta(minutes=1))
+    st.add_event(3, 1, "moldova", "x", T0 + dt.timedelta(minutes=2))
+    st.add_event(3, 1, "ipoteza_inchisa", "x", T0 + dt.timedelta(minutes=40))
+    st.add_event(6, None, "incetare", "x", T0 + dt.timedelta(minutes=50))
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "„fond”" not in out and "„încheiat”" not in out
+    assert "„Moldova”: 17:02" in out and "încetare raportată: 17:50" in out
+
+
+def test_describe_error_explains_telegram_refusal():
+    from veghe.notify import describe_error
+
+    e = http.HttpError(400, '{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}')
+    msg = describe_error(e)
+    assert "400" in msg and "chat not found" in msg and "CHAT_ID" in msg
+    assert describe_error(http.HttpError(401, '{"ok":false,"description":"Unauthorized"}')).count("token") == 1
+    assert describe_error(TimeoutError()) == "TimeoutError"
+
+
+def test_validate_flags_chat_id_with_inline_comment():
+    cfg = Config({}, {"telegram_bot_token": "1:x", "telegram_internal_chat_id": "-100555 # grupul intern"})
+    ws = validate(cfg)
+    assert any("TELEGRAM_INTERNAL_CHAT_ID" in w and "nu e un număr" in w for w in ws)
+    assert any("opțional" in w and "alertele interne se trimit oricum" in w for w in ws)
+    assert not any("nu e un număr" in w for w in validate(Config({}, {"telegram_internal_chat_id": "-1001234"})))

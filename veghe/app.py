@@ -17,7 +17,7 @@ from .config import Config, ConfigError, num
 from .engine import Engine, EngineConfig
 from .iso_helpers import manual_roalert_signal
 from .models import Message, Signal
-from .notify import ConsoleSender, Dispatcher, NtfySender, TelegramCommands, TelegramSender, parse_hhmm
+from .notify import ConsoleSender, Dispatcher, NtfySender, TelegramCommands, TelegramSender, describe_error, parse_hhmm
 from .store import Store
 from .timeutil import hhmm, iso, now
 
@@ -118,6 +118,13 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> tuple[
         if verify_private and not cfg.get("notify", "allow_unverified_internal_chat", default=False):
             try:
                 reason = tg.check_private()
+            except http.HttpError as e:
+                if 400 <= e.status < 500:  # răspuns clar de la Telegram: token/ID greșit, bot scos din grup
+                    log.critical("Telegram intern INACCESIBIL (%s): alertele NU vor ajunge în grup. Verificați "
+                                 "TELEGRAM_BOT_TOKEN, TELEGRAM_INTERNAL_CHAT_ID și că botul e membru.", describe_error(e))
+                else:
+                    log.warning("nu am putut verifica dacă grupul intern e privat (%s)", describe_error(e))
+                reason = None
             except Exception as e:  # noqa: BLE001 - fără rețea la pornire: nu orbim operatorii
                 log.warning("nu am putut verifica dacă grupul intern e privat (%s)", type(e).__name__)
                 reason = None
@@ -420,7 +427,12 @@ class App:
         # în Docker se leagă la 0.0.0.0 (VEGHE_STATUS_BIND), iar compose publică portul doar pe 127.0.0.1
         bind = os.environ.get("VEGHE_STATUS_BIND") or self.cfg.get("general", "status_bind", default="127.0.0.1")
         port = int(os.environ.get("VEGHE_STATUS_PORT") or self.cfg.get("general", "status_port", default=8080))
-        srv = ThreadingHTTPServer((bind, port), H)
+        try:
+            srv = ThreadingHTTPServer((bind, port), H)
+        except OSError as e:  # portul ocupat nu are voie să oprească alertele
+            log.error("pagina de stare NU a pornit pe %s:%s (%s); alertele continuă. Schimbați status_port în config.toml.",
+                      bind, port, e)
+            return None
         threading.Thread(target=srv.serve_forever, daemon=True, name="status").start()
         log.info("pagina de stare: http://%s:%s/status", bind, srv.server_address[1])
         return srv
@@ -435,6 +447,9 @@ class App:
         threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
         if self.commands:
             threading.Thread(target=self._commands_loop, daemon=True, name="comenzi").start()
+        # confirmă livrarea la fiecare pornire (și după repornirile automate)
+        self._submit([Message("internal", "pornire", f"[INTERN] veghe pornit · {hhmm(now())} · {len(self.collectors)} "
+                              f"surse active. Alertele vor veni în acest grup.")])
         try:
             while not self.stop.is_set():
                 try:
@@ -443,6 +458,7 @@ class App:
                     log.exception("eroare în ciclu")
                 self.stop.wait(cycle_seconds)
         finally:
-            srv.shutdown()
+            if srv:
+                srv.shutdown()
             self._pool.shutdown(wait=False, cancel_futures=True)
             log.info("veghe oprit")
