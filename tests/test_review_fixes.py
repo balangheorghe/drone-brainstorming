@@ -564,3 +564,48 @@ def test_validate_flags_chat_id_with_inline_comment():
     assert any("TELEGRAM_INTERNAL_CHAT_ID" in w and "nu e un număr" in w for w in ws)
     assert any("opțional" in w and "alertele interne se trimit oricum" in w for w in ws)
     assert not any("nu e un număr" in w for w in validate(Config({}, {"telegram_internal_chat_id": "-1001234"})))
+
+
+TXT = "RO-Alert în județul Iași: posibilă incursiune de drone"
+
+
+def _news(ext, text, pub, recv, source="rss:ro"):
+    return Signal(source=source, role="ro_official_news", text=text, ext_id=ext, published_at=pub, received_at=recv)
+
+
+def test_report_matches_headline_not_just_latest_news(tmp_path, capsys):
+    st = _db(tmp_path)
+    assert st.add_signal(_news("a", TXT, T0 + dt.timedelta(minutes=5), T0 + dt.timedelta(minutes=8)))
+    assert st.add_signal(_news("b", "Exercițiu RO-Alert programat în Vaslui", T0 + dt.timedelta(minutes=1),
+                               T0 + dt.timedelta(minutes=9)))
+    st.add_event(5, None, "oficial", Engine._excerpt(TXT, 180), T0 + dt.timedelta(minutes=10))
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "RO-Alert (din presă" in out and "17:05" in out
+
+
+def test_report_ignores_same_headline_received_after_the_message(tmp_path, capsys):
+    st = _db(tmp_path)
+    assert st.add_signal(_news("a", TXT, T0 + dt.timedelta(minutes=5), T0 + dt.timedelta(minutes=8)))
+    assert st.add_signal(_news("b", TXT, T0 + dt.timedelta(minutes=1), T0 + dt.timedelta(minutes=20), source="rss:alt"))
+    st.add_event(5, None, "oficial", Engine._excerpt(TXT, 180), T0 + dt.timedelta(minutes=10))
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "17:05" in out and "17:01" not in out
+
+
+def test_report_ignores_article_older_than_the_engine_accepts(tmp_path, capsys):
+    st = _db(tmp_path)
+    # aceeași știre, retrimisă: doar copia veche e în arhivă înaintea mesajului → nu e sursa lui
+    assert st.add_signal(_news("vechi", TXT, T0 - dt.timedelta(hours=3), T0 + dt.timedelta(minutes=9)))
+    st.add_event(5, None, "oficial", Engine._excerpt(TXT, 180), T0 + dt.timedelta(minutes=10))
+    st.close()
+    out = _report(tmp_path, capsys, T0 - dt.timedelta(minutes=30), T0 + dt.timedelta(minutes=60))
+    assert "RO-Alert (ora la care serviciul a aflat): 17:10" in out
+
+
+def test_describe_error_ntfy_has_no_telegram_hints():
+    from veghe.notify import describe_error
+
+    msg = describe_error(http.HttpError(401, '{"error":"unauthorized"}'), telegram=False)
+    assert "NTFY_TOKEN" in msg and "TELEGRAM" not in msg

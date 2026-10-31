@@ -93,7 +93,7 @@ url = "https://news.google.com/rss/search?q=RO-Alert+dron%C4%83+when:1h&hl=ro&gl
 role = "ro_official_news"
 interval = 300
 
-# Alte fluxuri de adăugat după ce le verificați cu `python -m veghe check-sources`:
+# Alte fluxuri de adăugat după ce le verificați cu check-sources (Docker: `docker compose run --rm veghe check-sources`):
 # [[sources.rss]]
 # name = "zdg"                  # ZdG (WordPress?) – URL neconfirmat
 # url = "https://www.zdg.md/feed/"

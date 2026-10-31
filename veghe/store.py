@@ -171,6 +171,15 @@ class Store:
             self._db.commit()
             return cur.rowcount
 
+    def supersede_queued(self, kind: str) -> int:
+        """Retrage mesajele interne încă netrimise de un anumit tip (ex. „veghe pornit” de la
+        reporniri cât Telegram era indisponibil), ca să nu sosească toate deodată."""
+        with self._lock:
+            cur = self._db.execute("UPDATE outbox SET status='superseded' WHERE kind=? AND status='queued' "
+                                   "AND channel='internal'", (kind,))
+            self._db.commit()
+            return cur.rowcount
+
     def failed_outbox_count(self, channel: str = "internal", since: dt.datetime | None = None) -> int:
         with self._lock:
             return self._db.execute("SELECT COUNT(*) FROM outbox WHERE channel=? AND status='failed' AND created_at >= ?",

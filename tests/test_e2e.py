@@ -30,6 +30,7 @@ class Upstream:
         self.headers = {}
         self.updates = []
         self.getchat = None  # (cod, corp) pentru a simula un grup greșit; implicit: supergrup privat
+        self.ntfy = []
         now = dt.datetime.now(UTC)
         self.t1 = (now - dt.timedelta(minutes=4)).isoformat(timespec="seconds")
         self.t2 = (now - dt.timedelta(minutes=2)).isoformat(timespec="seconds")
@@ -61,6 +62,9 @@ class Upstream:
         if path == f"/tg/bot{TOKEN}/sendMessage":
             self.sent.append(json.loads(body))
             return 200, "application/json", json.dumps({"ok": True, "result": {"message_id": len(self.sent)}})
+        if path.startswith("/ntfy/"):
+            self.ntfy.append(body.decode("utf-8"))
+            return 200, "application/json", "{}"
         if path == f"/tg/bot{TOKEN}/getChat":
             if self.getchat:
                 return self.getchat[0], "application/json", self.getchat[1]
@@ -162,6 +166,8 @@ def env(monkeypatch):
                  "TELEGRAM_INTERNAL_CHAT_ID": "-1001", "TELEGRAM_PUBLIC_CHAT_ID": "-2002",
                  "TELEGRAM_OPERATOR_IDS": "42"}.items():
         monkeypatch.setenv(k, v)
+    for k in ("VEGHE_STATUS_PORT", "VEGHE_STATUS_BIND", "NTFY_URL", "NTFY_TOPIC", "NTFY_TOKEN"):
+        monkeypatch.delenv(k, raising=False)  # portul/adresa din config, nu din mediul dezvoltatorului
 
 
 def test_full_cycle(tmp_path, upstream, env):
@@ -416,3 +422,55 @@ def test_check_sources_prints_each_warning_once(tmp_path, upstream, env, monkeyp
     main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
     cap = capsys.readouterr()
     assert cap.out.count("TELEGRAM_OPERATOR_IDS gol") == 1 and "TELEGRAM_OPERATOR_IDS" not in cap.err
+
+
+
+def test_check_sources_reports_unwritable_database(tmp_path, upstream, env, capsys):
+    from veghe.__main__ import main
+
+    (tmp_path / "fisier").write_text("x")
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace(f'db_path = "{tmp_path / "veghe.db"}"',
+                                                       f'db_path = "{tmp_path / "fisier" / "veghe.db"}"'), encoding="utf-8")
+    rc = main(["--config", str(p), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 1 and "✗ baza de date" in out and "chown" in out
+
+
+def test_check_sources_ntfy_only_is_not_reported_as_log_only(tmp_path, upstream, env, monkeypatch, capsys):
+    from veghe.__main__ import main
+
+    monkeypatch.delenv("TELEGRAM_INTERNAL_CHAT_ID")
+    monkeypatch.setenv("NTFY_URL", f"{upstream.base}/ntfy")
+    monkeypatch.setenv("NTFY_TOPIC", "veghe-test")
+    rc = main(["--config", str(write_config(tmp_path, upstream.base)), "check-sources"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "neconfigurat (alertele merg doar pe ntfy)" in out and "doar în jurnal" not in out
+    assert len(upstream.ntfy) == 1 and "test de livrare" in upstream.ntfy[0]
+
+
+def test_rate_limit_at_startup_is_not_critical(tmp_path, upstream, env, caplog):
+    from veghe.app import build_dispatcher
+
+    upstream.getchat = (429, json.dumps({"ok": False, "error_code": 429, "description": "Too Many Requests: retry after 5"}))
+    cfg = load(str(write_config(tmp_path, upstream.base)))
+    with caplog.at_level("WARNING", logger="veghe"):
+        build_dispatcher(cfg, Store(":memory:"), verify_private=True)
+    assert not any(r.levelname == "CRITICAL" for r in caplog.records)
+    assert any("nu am putut verifica" in r.message for r in caplog.records)
+
+
+def test_restarts_while_telegram_is_down_send_a_single_start_message(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    for _ in range(3):  # trei porniri anterioare, nelivrate
+        app.store.enqueue("internal", "pornire", "[INTERN] veghe pornit · vechi", "queued")
+    th = threading.Thread(target=app.run_forever, kwargs={"cycle_seconds": 0.2}, daemon=True)
+    th.start()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not any("veghe pornit" in m["text"] for m in upstream.sent):
+        time.sleep(0.1)
+    time.sleep(0.5)
+    app.stop.set()
+    th.join(10)
+    starts = [m["text"] for m in upstream.sent if "veghe pornit" in m["text"]]
+    assert len(starts) == 1 and "3 porniri anterioare nelivrate" in starts[0]

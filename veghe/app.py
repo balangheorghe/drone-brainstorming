@@ -119,7 +119,7 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> tuple[
             try:
                 reason = tg.check_private()
             except http.HttpError as e:
-                if 400 <= e.status < 500:  # răspuns clar de la Telegram: token/ID greșit, bot scos din grup
+                if 400 <= e.status < 500 and e.status != 429:  # răspuns clar: token/ID greșit, bot scos din grup
                     log.critical("Telegram intern INACCESIBIL (%s): alertele NU vor ajunge în grup. Verificați "
                                  "TELEGRAM_BOT_TOKEN, TELEGRAM_INTERNAL_CHAT_ID și că botul e membru.", describe_error(e))
                 else:
@@ -442,14 +442,17 @@ class App:
         for c in self.collectors:
             log.info("  sursa %s (rol %s, la %ss)", c.name, c.role, c.interval)
         self.flush_in_cycle = False
+        # confirmă livrarea la fiecare pornire (și după repornirile automate); un singur mesaj de pornire
+        # în așteptare, chiar dacă au fost mai multe reporniri cât Telegram era indisponibil
+        old = self.store.supersede_queued("pornire")
+        extra = f" ({old} porniri anterioare nelivrate)" if old else ""
+        self._submit([Message("internal", "pornire", f"[INTERN] veghe pornit · {hhmm(now())} · {len(self.collectors)} "
+                              f"surse active. Alertele vor veni în acest grup.{extra}")])
         srv = self.start_status_server()
         threading.Thread(target=self._dispatch_loop, daemon=True, name="livrare").start()
         threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
         if self.commands:
             threading.Thread(target=self._commands_loop, daemon=True, name="comenzi").start()
-        # confirmă livrarea la fiecare pornire (și după repornirile automate)
-        self._submit([Message("internal", "pornire", f"[INTERN] veghe pornit · {hhmm(now())} · {len(self.collectors)} "
-                              f"surse active. Alertele vor veni în acest grup.")])
         try:
             while not self.stop.is_set():
                 try:

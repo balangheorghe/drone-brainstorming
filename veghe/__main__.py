@@ -58,9 +58,23 @@ def cmd_check_sources(args):
             extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}" if s.role in ("ua_alert_state", "adsb") else ""
             print(f"      · {s.text[:140]}{extra}")
     print(f"\n{ok}/{len(cols)} surse au răspuns corect.")
-    print("\nLivrarea alertelor:")
+    print("\nArhiva și livrarea alertelor:")
+    db_ok = check_database(cfg)
     delivery_ok = check_delivery(cfg, t)
-    return 0 if ok == len(cols) and delivery_ok else 1
+    return 0 if ok == len(cols) and delivery_ok and db_ok else 1
+
+
+def check_database(cfg) -> bool:
+    """Serviciul trebuie să poată scrie arhiva; altfel pornește și cade la nesfârșit."""
+    db = cfg.get("general", "db_path", default="data/veghe.db")
+    try:
+        Store(db).close()
+    except Exception as e:  # noqa: BLE001
+        print(f"✗ baza de date {db}: {type(e).__name__}: {e} → directorul trebuie să fie al utilizatorului "
+              f"serviciului (Docker: sudo chown 10001:10001 data; systemd: sudo chown veghe:veghe data)")
+        return False
+    print(f"✓ baza de date {db}: se poate scrie")
+    return True
 
 
 def check_delivery(cfg, t) -> bool:
@@ -73,6 +87,8 @@ def check_delivery(cfg, t) -> bool:
             f"Dacă vedeți acest mesaj, alertele vor ajunge aici.")
     tok, chat = cfg.secret("telegram_bot_token"), cfg.secret("telegram_internal_chat_id")
     api = cfg.get("notify", "telegram_api", default="https://api.telegram.org")
+    dispatcher, _ = build_dispatcher(cfg, Store(":memory:"))
+    ntfy = [s for s in dispatcher.senders["internal"] if isinstance(s, NtfySender)]
     good = True
     if tok and chat:
         tg = TelegramSender(tok, chat, api, 0)
@@ -87,18 +103,18 @@ def check_delivery(cfg, t) -> bool:
         except Exception as e:  # noqa: BLE001
             print(f"✗ telegram intern {chat}: {describe_error(e)}")
             good = False
+    elif ntfy:
+        print("- telegram intern: neconfigurat (alertele merg doar pe ntfy)")
     else:
         print("✗ telegram intern: TELEGRAM_BOT_TOKEN / TELEGRAM_INTERNAL_CHAT_ID lipsesc → alertele apar doar în jurnal")
         good = False
-    dispatcher, _ = build_dispatcher(cfg, Store(":memory:"))
-    for s in dispatcher.senders["internal"]:
-        if isinstance(s, NtfySender):
-            try:
-                s.send(text)
-                print(f"✓ {s.name}: mesaj de test trimis")
-            except Exception as e:  # noqa: BLE001
-                print(f"✗ {s.name}: {describe_error(e)}")
-                good = False
+    for s in ntfy:
+        try:
+            s.send(text)
+            print(f"✓ {s.name}: mesaj de test trimis")
+        except Exception as e:  # noqa: BLE001
+            print(f"✗ {s.name}: {describe_error(e, telegram=False)}")
+            good = False
     return good
 
 

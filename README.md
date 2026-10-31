@@ -16,7 +16,7 @@ Codul din [`veghe/`](veghe/) citește automat sursele publice (alerte UA, canale
 
 - Ghid de deploy și ce s-a validat: [docs/13-implementare-deploy.md](docs/13-implementare-deploy.md)
 - Prima comandă pe server, după configurare: `docker compose run --rm veghe check-sources` (verifică sursele și trimite un mesaj de test în grupul privat)
-- Reluarea unui incident real fără rețea: `python -m veghe replay tests/scenarios/2026-10-31.jsonl`
+- Reluarea unui incident real fără rețea: `python3 -m veghe replay tests/scenarios/2026-10-31.jsonl` (Python ≥ 3.11; pe serverul cu Docker: `docker compose run --rm -v ./tests:/app/tests:ro veghe replay tests/scenarios/2026-10-31.jsonl`)
 
 ## Ce s-a întâmplat
 

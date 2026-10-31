@@ -36,7 +36,7 @@ class PublicPolicyError(Exception):
     pass
 
 
-def describe_error(e: Exception) -> str:
+def describe_error(e: Exception, telegram: bool = True) -> str:
     """Eroare de livrare pe înțeles (fără token: HttpError nu conține URL-ul). Pentru Telegram,
     include explicația din răspuns („chat not found”, „bot was kicked” …)."""
     if not isinstance(e, http.HttpError):
@@ -48,10 +48,14 @@ def describe_error(e: Exception) -> str:
             desc = str(json.loads(body).get("description") or "")
         except (ValueError, AttributeError):
             desc = ""
-    hint = {401: "token greșit (TELEGRAM_BOT_TOKEN)",
-            403: "botul nu e în grup sau nu are voie să scrie",
-            400: "ID de chat greșit sau grupul s-a schimbat (TELEGRAM_*_CHAT_ID)",
-            404: "token greșit sau adresă API greșită"}.get(e.status, "")
+    if telegram:
+        hint = {401: "token greșit (TELEGRAM_BOT_TOKEN)",
+                403: "botul nu e în grup sau nu are voie să scrie",
+                400: "ID de chat greșit sau grupul s-a schimbat (TELEGRAM_*_CHAT_ID)",
+                404: "token greșit sau adresă API greșită"}.get(e.status, "")
+    else:  # ntfy
+        hint = {401: "NTFY_TOKEN greșit sau fără drept pe topic", 403: "NTFY_TOKEN greșit sau fără drept pe topic",
+                404: "NTFY_URL / NTFY_TOPIC greșit"}.get(e.status, "")
     parts = [f"HttpError {e.status}"] + [p for p in (hint, desc[:160]) if p]
     return " · ".join(parts)
 
@@ -195,7 +199,7 @@ class Dispatcher:
                         if not getattr(s, "optional", False):
                             delivered.add(s.name)
                     except Exception as e:  # noqa: BLE001 - orice eroare de rețea
-                        errors.append(f"{s.name}: {describe_error(e)}")
+                        errors.append(f"{s.name}: {describe_error(e, telegram=isinstance(s, TelegramSender))}")
                         if isinstance(e, http.HttpError) and e.retry_after:
                             retry_after = max(retry_after or 0, e.retry_after)
                         # fără răspuns de la server (timeout etc.): mesajul poate să fi plecat deja

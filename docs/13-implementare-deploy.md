@@ -11,7 +11,7 @@
 - **Mesaje PUBLICE:** doar retransmiteri ale RO-Alert-urilor relatate de presa/autoritățile românești și încetarea alertei; **niciodată** conținut din canalele ucrainene; **numai după aprobarea unui operator** (`/aproba N`). Canalul public e oprit implicit.
 - **Aeronavele militare** sunt ignorate complet la citire (nici măcar nu se numără); se păstrează doar numărători de aeronave civile.
 - **Siguranță la livrare:** botul refuză să trimită mesaje interne dacă „grupul intern” e de fapt un canal sau un grup public; refuză ntfy.sh fără token; comenzile sunt acceptate doar de la operatori, doar din grupul intern sau din chat privat, și doar dacă sunt recente (sub 10 minute).
-- **Te anunță când orbește:** dacă o sursă cade (3 erori la rând), primiți „SURSĂ CĂZUTĂ”; la revenire, „Sursa … a revenit”. Dacă bucla principală se blochează peste 5 minute, procesul iese, iar Docker/systemd îl repornește. Dacă portul paginii de stare e ocupat, doar pagina nu pornește; alertele continuă.
+- **Te anunță când orbește:** dacă o sursă cade (3 erori la rând), primiți „SURSĂ CĂZUTĂ”; la revenire, „Sursa … a revenit”. Dacă bucla principală se blochează peste 5 minute, procesul iese, iar Docker/systemd îl repornește. Cu systemd, dacă portul paginii de stare e ocupat, doar pagina nu pornește; alertele continuă (cu Docker, vedeți mai jos `VEGHE_HOST_PORT`).
 
 ### Comenzi pe Telegram (opționale; doar operatorii din `TELEGRAM_OPERATOR_IDS`)
 
@@ -44,11 +44,11 @@ Exemplu: `docker compose run --rm veghe report --since 2026-11-01T14:00:00Z`.
 |---|---|---|
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
 | **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
-| **Verificarea dinaintea unirii în `master`** (instalare pas cu pas cu Docker și cu systemd, revizuirea ultimelor modificări, documentație vs. cod; fiecare constatare reverificată independent) | 32 de constatări confirmate, unele găsite de mai mulți verificatori (ex. ID de grup greșit = alerte pierdute fără avertizare, port ocupat = serviciu oprit, depozit privat, comenzi care nu mergeau pe serverul cu Docker) – **corectate**, cu teste | |
-| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (101 teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Verificarea dinaintea unirii în `master`** (instalare pas cu pas cu Docker și cu systemd, revizuirea ultimelor modificări, documentație vs. cod; fiecare constatare reverificată independent) | prima trecere: 32 de constatări confirmate, unele găsite de mai mulți verificatori (ex. ID de grup greșit = alerte pierdute fără avertizare, port ocupat = serviciu oprit, depozit privat, comenzi care nu mergeau pe serverul cu Docker); a doua trecere, pe corecturi: 12 constatări (ex. portul 8080 ocupat oprea containerul, `data/` fără drept de scriere nedetectat) – **toate corectate**, cu teste | |
+| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (109 teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, mesajul de test și cel de pornire, erorile Telegram explicate (token/ID greșit, bot scos), refuzul comenzilor neautorizate, modul fără operatori, `check-sources`, pagina de stare |
-| **Imaginea Docker** | construită și pornită | `docker compose build` reușește; `check-sources` rulează în container; healthcheck „healthy”; `/health` și `/status` răspund; oprire curată la `docker compose stop`; baza de date se creează în `data/` cu drepturi doar pentru serviciu |
+| **Imaginea Docker** | construită și pornită | `docker compose build` reușește; `check-sources` rulează în container (inclusiv mesajul de test către un Telegram simulat și verificarea `data/`); healthcheck „healthy”; `/health` și `/status` răspund; „veghe pornit” la pornire; port ocupat → `VEGHE_HOST_PORT`; oprire curată la `docker compose stop`; baza de date se creează în `data/` cu drepturi doar pentru serviciu |
 | **Rulare reală a serviciului** (fără acces la surse) | merge | bucla nu cade la erori de rețea, aplică pauze progresive (de la 2× intervalul sursei, până la 15 min), oprire curată la SIGTERM |
 | **Surse reale (live) și Telegram real** | **nevalidat aici** | rețeaua sesiunii de dezvoltare blochează Telegram, API-urile ucrainene, Google News și adsb.lol. **Validarea live = `check-sources` pe server** (inclusiv mesajul de test în grup) |
 
@@ -99,12 +99,12 @@ git clone -b master -c core.sshCommand="ssh -i ~/.ssh/veghe_deploy -o Identities
 # 3. configurarea (secretele doar pentru voi)
 install -m 644 config.example.toml config.toml   # ajustați dacă e cazul
 install -m 600 .env.example .env && nano .env    # TELEGRAM_BOT_TOKEN, TELEGRAM_INTERNAL_CHAT_ID (+ opționalele)
-mkdir -p data && sudo chown 10001:10001 data     # utilizatorul din container
+mkdir -p data && sudo chown 10001:10001 data     # utilizatorul din container (ca root, fără sudo: chown 10001:10001 data)
 
 # 4. construire și VALIDAREA LIVE
 docker compose build
 docker compose run --rm veghe check-sources
-#   → fiecare sursă cu ✓, „✓ telegram intern …” și MESAJUL DE TEST trebuie să apară în grupul privat
+#   → fiecare sursă cu ✓, „✓ baza de date”, „✓ telegram intern …” și MESAJUL DE TEST trebuie să apară în grupul privat
 
 # 5. pornire
 docker compose up -d
@@ -113,9 +113,11 @@ docker compose logs -f        # în grup trebuie să apară „veghe pornit”; 
 
 Actualizare ulterioară: `git pull && docker compose build && docker compose up -d` (`config.toml`, `.env` și `data/` nu sunt atinse).
 
-Verificări ulterioare: în grup apare „veghe pornit” la fiecare repornire. Pagina de stare e disponibilă doar pe server: `curl http://127.0.0.1:8080/status` (sau printr-un tunel SSH). Dacă ați setat `TELEGRAM_OPERATOR_IDS`, puteți scrie și `/stare` în grup. Containerul pornește singur după o repornire a serverului dacă serviciul Docker e activ (`sudo systemctl enable docker`).
+Verificări ulterioare: în grup apare „veghe pornit” la fiecare repornire. Pagina de stare e disponibilă doar pe server: `curl http://127.0.0.1:8080/status` (sau printr-un tunel SSH; alt port dacă ați setat `VEGHE_HOST_PORT`). Dacă ați setat `TELEGRAM_OPERATOR_IDS`, puteți scrie și `/stare` în grup. Containerul pornește singur după o repornire a serverului dacă serviciul Docker e activ (`sudo systemctl enable docker`).
 
-**Ce faceți dacă `check-sources` arată ✗:**
+**Ce faceți dacă `check-sources` arată ✗** (sau altceva nu merge):
+- `docker compose up -d` spune „address already in use” / „port is already allocated” → portul 8080 e ocupat pe server: puneți `VEGHE_HOST_PORT=8081` în `.env` și rulați din nou `docker compose up -d`; pagina de stare e apoi la `http://127.0.0.1:8081`;
+- `baza de date` → directorul `data/` nu e al containerului: `sudo chown 10001:10001 data`, apoi din nou `check-sources`;
 - `telegram intern` → mesajul spune cauza: token greșit (401), ID de grup greșit sau grup transformat în supergrup (400), botul nu e în grup (403), grup cu nume public (refuzat). Corectați `.env` și rulați din nou;
 - `telegram:<canal>` cu „nu conține mesaje publice” → canalul nu are previzualizare publică sau și-a schimbat numele; scoateți-l sau corectați-l în `config.toml`;
 - `rss:moldpres` sau alt RSS cu „nu e un flux RSS/Atom” → URL-ul s-a schimbat; căutați `<link rel="alternate" type="application/rss+xml">` în pagina publicației;
@@ -141,11 +143,11 @@ cd /opt/veghe
 sudo install -m 644 config.example.toml config.toml
 sudo install -m 640 -o root -g veghe .env.example .env && sudo nano .env
 sudo mkdir -p data && sudo chown veghe:veghe data
-sudo -u veghe bash -c 'set -a; . ./.env; /usr/bin/python3 -m veghe check-sources'   # ✓ + mesajul de test în grup
+sudo -u veghe bash -c 'set -a; . ./.env; /usr/bin/python3 -m veghe check-sources'   # ✓ (surse, baza de date) + mesajul de test în grup
 sudo cp deploy/veghe.service /etc/systemd/system/ && sudo systemctl enable --now veghe
 systemctl status veghe --no-pager
-journalctl -u veghe -f                 # „veghe pornit”, fără „Traceback”; în grup apare „veghe pornit”
 curl -s http://127.0.0.1:8080/health   # ok
+sudo journalctl -u veghe -n 50 --no-pager   # „veghe pornit”, fără „Traceback”; în grup apare „veghe pornit”
 ```
 
 Actualizare ulterioară: `sudo git -C /opt/veghe pull && sudo systemctl restart veghe`. Dacă portul 8080 e ocupat pe server, schimbați `status_port` în `config.toml`.
@@ -165,5 +167,5 @@ Actualizare ulterioară: `sudo git -C /opt/veghe pull && sudo systemctl restart 
 - Starea ipotezelor e în memorie: după o repornire, ipotezele deschise se pierd (arhiva rămâne). La prima citire după pornire, știrile fără dată sunt doar arhivate (ca să nu declanșeze alerte vechi).
 - RO-Alert-ul e aflat din presă, nu direct din rețeaua RO-Alert (care nu are flux public). Mesajul „OFICIAL” vine deci la câteva minute după alerta de pe telefon; rolul lui e confirmarea, nu avertizarea timpurie (aceea vine din nivelurile anterioare).
 - Comanda `roalert` din linia de comandă doar arhivează (pentru raport); serviciul pornit află doar prin `/roalert` pe Telegram (cu operatori).
-- Acoperă dronele (inclusiv cele cu reacție). Rachetele declanșează doar VIGILENȚĂ (prea rapide pentru acest lanț de surse publice); aviația militară nu e urmărită; amenințările terestre nu sunt acoperite.
+- Acoperă dronele (inclusiv cele cu reacție). Rachetele nu declanșează DIRECȚIE/ATENȚIE/APROPIERE (prea rapide pentru acest lanț de surse publice): doar VIGILENȚĂ și, dacă presa relatează un RO-Alert, OFICIAL. Aviația militară nu e urmărită; amenințările terestre nu sunt acoperite.
 - Google News RSS nu e un API oficial; poate fi limitat. Previzualizarea t.me/s nu e un API garantat.

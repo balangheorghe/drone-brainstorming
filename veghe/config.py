@@ -84,7 +84,8 @@ def validate(cfg: Config) -> list[str]:
     if cfg.get("sources", "ukrainealarm", "enabled", default=False) and not cfg.secret("ukrainealarm_token"):
         warnings.append("ukrainealarm activat, dar UKRAINEALARM_TOKEN lipsește → sursa e dezactivată")
     if not cfg.secret("telegram_bot_token") or not cfg.secret("telegram_internal_chat_id"):
-        warnings.append("TELEGRAM_BOT_TOKEN / TELEGRAM_INTERNAL_CHAT_ID lipsesc → mesajele interne merg doar în jurnal (consolă)")
+        where = "doar pe ntfy" if cfg.secret("ntfy_url") and cfg.secret("ntfy_topic") else "doar în jurnal (consolă)"
+        warnings.append(f"TELEGRAM_BOT_TOKEN / TELEGRAM_INTERNAL_CHAT_ID lipsesc → mesajele interne merg {where}")
     if cfg.get("notify", "public_enabled", default=False) and not cfg.secret("telegram_public_chat_id"):
         warnings.append("public_enabled = true, dar TELEGRAM_PUBLIC_CHAT_ID lipsește → canalul public rămâne oprit")
     if cfg.secret("telegram_bot_token") and not cfg.operator_ids:

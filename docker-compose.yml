@@ -13,7 +13,7 @@ services:
       - ./data:/app/data
     # Pagina de stare doar pe localhost-ul serverului (vedeți-o prin tunel SSH, nu o expuneți)
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${VEGHE_HOST_PORT:-8080}:8080"   # alt port pe server: VEGHE_HOST_PORT=8081 în .env
     read_only: true
     tmpfs:
       - /tmp
