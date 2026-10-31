@@ -296,3 +296,24 @@ def test_untrusted_internal_group_disables_group_commands(tmp_path, upstream, en
     app = App(load(str(write_config(tmp_path, upstream.base))), verify_private=True)
     assert [s.name for s in app.dispatcher.senders["internal"]] == ["console"]
     assert app.commands.internal_chat is None  # comenzile merg doar în chat privat cu botul
+
+
+def test_zero_intervention_mode(tmp_path, upstream, monkeypatch):
+    """Fără operatori, fără canal public: alertele interne (inclusiv OFICIAL din presă) vin singure,
+    nimic nu așteaptă aprobare și nu e nevoie de nicio comandă."""
+    for k, v in {"ALERTS_IN_UA_TOKEN": "ain-secret", "UKRAINEALARM_TOKEN": "ua-secret", "TELEGRAM_BOT_TOKEN": TOKEN,
+                 "TELEGRAM_INTERNAL_CHAT_ID": "-1001"}.items():
+        monkeypatch.setenv(k, v)
+    for k in ("TELEGRAM_PUBLIC_CHAT_ID", "TELEGRAM_OPERATOR_IDS"):
+        monkeypatch.delenv(k, raising=False)
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace("public_enabled = true", "public_enabled = false"), encoding="utf-8")
+    app = App(load(str(p)))
+    assert app.commands is None
+    cycle(app)
+    internal = [m["text"] for m in upstream.sent if m["chat_id"] == "-1001"]
+    assert any("VIGILENȚĂ" in t for t in internal)
+    assert any("OFICIAL" in t and "Iași" in t for t in internal)
+    assert not any("așteptare" in t or "/aproba" in t for t in internal)
+    assert not app.store.outbox("pending_approval")
+    assert {m["chat_id"] for m in upstream.sent} == {"-1001"}

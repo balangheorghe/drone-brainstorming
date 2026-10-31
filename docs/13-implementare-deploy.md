@@ -40,7 +40,7 @@
 |---|---|---|
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
 | **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
-| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec (86 de teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Teste unitare** (geografie, analiza textului uk/ru/ro, parsere) | trec (87 de teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, refuzul comenzilor neautorizate, aprobarea unui mesaj public, `check-sources`, pagina de stare |
 | **Rulare reală a serviciului** (15 s, fără acces la surse) | merge | bucla nu cade la erori de rețea, aplică pauze progresive (40 s → 10 min), `/health` și `/status` răspund, oprire curată la SIGTERM |
@@ -65,12 +65,11 @@ Singurele acțiuni: instalarea o dată și `check-sources` la început. În rest
 1. **Un server Linux mic în UE** (1 vCPU, 1 GB RAM, 10 GB disc ajung), cu Docker și Docker Compose. Orice furnizor de VPS. Alternativ, un Raspberry Pi permanent conectat, cu systemd (fără Docker).
 2. **Un bot Telegram:** creat cu [@BotFather](https://t.me/BotFather) → `TELEGRAM_BOT_TOKEN`.
 3. **Un grup Telegram privat** pentru operatori (fără link/nume public), cu botul adăugat → `TELEGRAM_INTERNAL_CHAT_ID` (începe cu `-100…`; îl aflați trimițând un mesaj în grup și citind `https://api.telegram.org/bot<TOKEN>/getUpdates`). Dacă grupul are nume public (@…), botul refuză să trimită în el.
-4. **ID-urile numerice ale operatorilor** → `TELEGRAM_OPERATOR_IDS` (de ex. prin @userinfobot).
+4. (Opțional) **ID-urile numerice ale operatorilor** → `TELEGRAM_OPERATOR_IDS` (de ex. prin @userinfobot). Fără ele alertele vin oricum; doar comenzile (`/stare` …) nu sunt acceptate.
 5. **Token-uri pentru API-urile ucrainene** (opționale la început; canalul `air_alert_ua` merge fără):
    - alerts.in.ua: formularul [alerts.in.ua/api-request](https://alerts.in.ua/api-request) – descrieți scopul civil cu cuvintele voastre;
    - ukrainealarm: formularul de pe [api.ukrainealarm.com](https://api.ukrainealarm.com).
-6. (Opțional) **ID-urile operatorilor** pot lipsi: fără ele nu se pot da comenzi, dar alertele vin oricum.
-7. (Mai târziu) **un canal Telegram public**, doar dacă decideți să retransmiteți oficial → `TELEGRAM_PUBLIC_CHAT_ID` + `public_enabled = true`.
+6. (Mai târziu) **un canal Telegram public**, doar dacă decideți să retransmiteți oficial → `TELEGRAM_PUBLIC_CHAT_ID` + `public_enabled = true`.
 
 ## Deploy: pașii (Docker)
 

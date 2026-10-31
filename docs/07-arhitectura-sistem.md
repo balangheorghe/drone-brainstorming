@@ -104,7 +104,7 @@ Reguli: nume și design care **nu** seamănă cu RO-Alert sau cu o instituție; 
 
 > **[INTERN] VIGILENȚĂ · 16:12 EEST (8.09).** Alertă UA activă în reg. Odesa; monitorizare UA: drone cu reacție, curs nord-vest. ETA maxim spre Iași dacă intră în MD: ~20–60 min. Fără acțiune publică.
 
-> **[INTERN] ATENȚIE · 16:58 EET (31.10).** Presa MD (16:57): dronă detectată la 16:24, restricție în nord la 16:46; poziție publicată: zona Telenești/Bănești. ETA Prut 7–21 min, Iași 9–28 min (estimare, linie dreaptă). Scor necalibrat. Verificați RO-Alert, pregătiți retransmiterea. *(În realitate, RO-Alert a venit la 17:04.)*
+> **[INTERN] ATENȚIE · 16:58 EET (31.10).** Presa MD (16:57): dronă detectată la 16:24, restricție în nord la 16:46; poziție publicată: zona Telenești/Bănești. ETA Prut 7–21 min, Iași 9–28 min (estimare, linie dreaptă). Scor necalibrat. Un RO-Alert poate urma. *(În realitate, RO-Alert a venit la 17:04.)*
 
 > **[NEOFICIAL] RETRANSMITERE · 17:04 EET.** Autoritățile au emis RO-Alert pentru [zona din mesaj]. Textul oficial: „[citat]”. Urmați doar instrucțiunile oficiale. Observațiile se raportează la 112.
 
