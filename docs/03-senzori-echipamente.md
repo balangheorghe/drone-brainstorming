@@ -49,6 +49,8 @@
 
 **Dronele cu reacție – problema deschisă:** au alt spectru (turbină mică) și n-am găsit dovezi publice că rețelele acustice le detectează la fel de bine. Clasificatoarele antrenate pe motorul cu piston trebuie reantrenate. În plus, sunetul vine cu întârziere (343 m/s): la o rază de 5 km rămân ~83 s pentru o dronă cu piston, dar doar **~25 s** la 450 km/h; la 2 km, ~33 s, respectiv ~10 s.
 
+Cum arată concret senzorii și unde se pun: [10-senzori-acustici-amplasare](10-senzori-acustici-amplasare.md).
+
 ### 2.2 RF pasiv
 
 - **Contra Shahed:** practic nu. GNSS nu emite; doar variantele cu modem emit, iar traficul celular e vizibil doar operatorilor (un civil nu are voie să-l intercepteze). Nici senzorul profesional Skyperion nu vede variantele exclusiv GNSS/INS ([Janes](https://www.janes.com/osint-insights/defence-news/c4isr/metis-aerospaces-skyperion-lightweight-rf-sensor-previously-tested-in-ukraine)).

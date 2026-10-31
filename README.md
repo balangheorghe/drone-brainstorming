@@ -59,6 +59,7 @@ Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md).
 | [07-arhitectura-sistem](docs/07-arhitectura-sistem.md) | arhitectura pe 3 niveluri, modelul de scor, mesaje, KPI |
 | [08-plan-actiune](docs/08-plan-actiune.md) | primii pași, întrebări pentru autorități, ce să nu faceți |
 | [09-evenimente-2026](docs/09-evenimente-2026.md) | anexă: incidentele din RO și MD, ian.–oct. 2026, cu ore |
+| [10-senzori-acustici-amplasare](docs/10-senzori-acustici-amplasare.md) | cum arată senzorii acustici, reguli de amplasare, zone în jurul Iașului, acorduri necesare |
 | [analysis/](analysis/) | scriptul care leagă detecțiile moldovenești și incidentele de alertele ucrainene + [rezultate](analysis/rezultate.md) |
 
 ## Limitări
