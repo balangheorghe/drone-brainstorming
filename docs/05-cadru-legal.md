@@ -1,6 +1,6 @@
 # 05 · Cadrul legal: ce e permis, cui și cu ce autorizații
 
-> **Nu e consultanță juridică.** E o hartă pentru brainstorming. Înainte de radar, camere spre spațiul public sau un canal public de informare, verificați textele consolidate pe [legislatie.just.ro](https://legislatie.just.ro) și cereți părerea unui jurist și a autorităților (ANCOM, ANSPDCP, AACR, ISU Iași, Poliția de Frontieră).
+> **Nu e consultanță juridică.** Verificarea juridică din această sesiune a fost limitată: multe numere de articole și acte românești sunt marcate „de verificat”. E o hartă pentru brainstorming. Înainte de radar, camere spre spațiul public sau un canal public de informare, verificați textele consolidate pe [legislatie.just.ro](https://legislatie.just.ro) și cereți părerea unui jurist și a autorităților (ANCOM, ANSPDCP, AACR, ISU Iași, Poliția de Frontieră).
 
 *Stare: 31.10.2026. Paliere: **P1** = cetățean/comunitate; **P2** = ONG/firmă/universitate; **P3** = administrație locală, instituție, operator de infrastructură critică (ex. Aeroportul Iași).*
 
@@ -9,7 +9,7 @@
 - **Detecția și alertarea publică pentru amenințări aeriene militare sunt competențe ale statului** (MApN, IGSU/ISU/DSU, STS). Inițiativele civile le completează, nu le dublează și nu le imită.
 - **Permis tuturor:** recepție pasivă (Remote ID, ADS-B, detecție de energie RF fără decodare), senzori acustici fără stocare de audio brut, camere orientate spre cer (cu reguli GDPR), raportare la 112.
 - **Doar cu autorizare:** radar activ (licență ANCOM), camere care acoperă sistematic spațiul public (DPIA), echipamente în zona de frontieră (de verificat cu Poliția de Frontieră).
-- **Interzis actorilor nestatali:** bruiaj, spoofing, preluarea controlului, doborâre, interceptarea comunicațiilor, declanșarea RO-Alert sau a sirenelor publice.
+- **Interzis actorilor privați:** bruiaj, spoofing, preluarea controlului, doborâre, interceptarea comunicațiilor, declanșarea RO-Alert sau a sirenelor publice.
 
 ## 1. Cine face ce (statul)
 
@@ -26,14 +26,15 @@
 
 ## 2. Legea din 2025 privind doborârea dronelor
 
-- În **mai 2025** a fost promulgată legea care modifică Legea 257/2001 și permite MApN să acționeze pe timp de pace împotriva dronelor care intră neautorizat în spațiul aerian al României, inclusiv prin doborâre; Curtea Constituțională a respins contestațiile ([Romania Insider](https://www.romania-insider.com/romania-enacts-law-down-drones-may-2025); [CCR](https://www.romania-insider.com/ccr-clears-law-shoot-down-unauthorized-drones-2025)). Presa o numește „Legea 73/2025”.
+- În **mai 2025** a fost promulgată legea care modifică Legea 257/2001 și permite MApN să acționeze pe timp de pace împotriva dronelor care intră neautorizat în spațiul aerian al României, inclusiv prin doborâre; Curtea Constituțională a respins contestațiile ([Romania Insider](https://www.romania-insider.com/romania-enacts-law-down-drones-may-2025); [CCR](https://www.romania-insider.com/ccr-clears-law-shoot-down-unauthorized-drones-2025)). **Numărul legii și data publicării în Monitorul Oficial nu le-am putut confirma** (unele texte o numesc „Legea 73/2025”, fără sursă primară) – verificați pe legislatie.just.ro.
 - Aplicare: doborârile din 2026 (de ex. Sulina, 17.10).
-- **Pentru P1–P3:** legea nu dă niciun drept de neutralizare actorilor nestatali. Rolul lor legal: **detecție pasivă, documentare, raportare**.
+- **Pentru P1–P2:** legea nu dă niciun drept de neutralizare actorilor privați. Rolul lor legal: **detecție pasivă, documentare, raportare**.
+- **Nuanță pentru P3 (aeroporturi de stat):** CNAB (compania de stat care administrează Otopeni și Băneasa) a anunțat în aug. 2026 intenția de a cumpăra sisteme integrate de detecție, identificare, urmărire **și neutralizare**, iar directorii de aeroporturi spun că obligația vine prin decizii CSAT. Cine operează și cine autorizează partea de neutralizare, și pe ce temei, nu e clar public – de lămurit înainte de orice caiet de sarcini.
 
 ## 3. Radio: emisie, bruiaj, recepție
 
-- **Bruiajul e interzis** cetățenilor, ONG-urilor, firmelor și operatorilor de infrastructură, inclusiv aeroporturilor; e rezervat instituțiilor abilitate prin lege. Echipamentele radio trebuie să evite interferențele dăunătoare (Directiva RED, art. 3(2)).
-- **Radarul activ e un emițător:** are nevoie de autorizare ANCOM de utilizare a frecvențelor și de conformitate RED (marcaj CE). Benzile scutite de licență (de ex. 24 GHz) vizează dispozitive cu rază scurtă; un radar de supraveghere în banda X/Ku cere drept individual. Lângă aeroport: coordonare aeronautică.
+- **Bruiajul e interzis** cetățenilor, ONG-urilor și firmelor; e rezervat instituțiilor abilitate prin lege (eventual și operatorilor de aeroporturi de stat, în condițiile stabilite de autorități – vezi §2). Articolul exact din OUG 111/2011 și lista instituțiilor abilitate nu le-am confirmat. Echipamentele radio trebuie să evite interferențele dăunătoare (Directiva RED, art. 3(2)).
+- **Radarul activ e un emițător:** are nevoie de autorizare ANCOM de utilizare a frecvențelor și de conformitate RED (marcaj CE). Benzile scutite de licență sunt pentru anumite aplicații cu rază scurtă (de ex. 77–81 GHz pentru radare auto; 76–77 GHz apare pentru radare de infrastructură) – nu pentru supraveghere generală; un radar de supraveghere în banda X/Ku cere drept individual de utilizare. Lângă aeroport: coordonare aeronautică.
 - **LoRa și alte radiouri pentru noduri:** doar benzile permise în UE (de ex. 868 MHz), nu 915 MHz din proiectele americane.
 - **Recepția pasivă:**
   - **Remote ID** (Wi-Fi/Bluetooth): protocol deschis, conceput să fie recepționat de telefoane – recepția e exact utilizarea prevăzută.
@@ -52,7 +53,7 @@
 ## 5. Camere și microfoane (GDPR)
 
 - Excepția „uz casnic” **nu** acoperă o cameră care filmează spațiul public (CJUE, C-212/13 Ryneš). Orientați camerele spre cer, mascați strada și vecinii, nu publicați imagini cu persoane.
-- **DPIA obligatorie** pentru monitorizarea sistematică, pe scară largă, a unei zone publice (GDPR art. 35(3)(c)); ANSPDCP are lista operațiunilor care cer DPIA.
+- **DPIA obligatorie** pentru monitorizarea sistematică, pe scară largă, a unei zone accesibile publicului (GDPR art. 35(3)(c)); ANSPDCP are o listă a operațiunilor care cer DPIA. Legea 190/2018 reglementează explicit supravegherea video mai ales în relațiile de muncă; pentru spațiul public se aplică GDPR direct.
 - Temei: autoritățile – interes public (art. 6(1)(e)); ONG/firme – de regulă interes legitim (art. 6(1)(f)). Panouri și note de informare (Ghidul EDPB 3/2019).
 - **Microfoane:** Codul penal (art. 226) incriminează înregistrarea convorbirilor private. Proiectați senzorii acustici cu **procesare pe dispozitiv, fără stocarea audio brut și fără vorbire inteligibilă**; transmiteți doar detecții (oră, scor, azimut).
 - Retenție minimă, control al accesului, protocol scris pentru predarea datelor către autorități.
@@ -94,7 +95,7 @@ Montarea de senzori lângă Prut poate intra sub regimul frontierei de stat (OUG
 | Camere optice / termice | P1 (limitat), P2, P3 | spre cer, mascare, temei, DPIA, panouri |
 | Radar activ | P3 (P2 doar ca prestator) | licență ANCOM, RED, coordonare aeronautică |
 | Senzori în zona de frontieră | P2, P3 | acordul Poliției de Frontieră și al proprietarului (de verificat) |
-| Bruiaj, spoofing, neutralizare | **nimeni nestatal** (nici aeroportul) | rezervate statului |
+| Bruiaj, spoofing, neutralizare | **nimeni privat**; aeroporturile de stat doar dacă autoritățile le dau explicit acest rol | rezervate statului |
 | Doborâre | **numai MApN** | legea din 2025 |
 | RO-Alert, sirene publice | **numai autoritățile** | – |
 | Canal privat de informare | P1, P2 (P3 doar cu protocol cu ISU) | disclaimer, fără imitarea RO-Alert, corecții, fără date militare în timp real |

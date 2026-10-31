@@ -4,7 +4,7 @@
 
 ## 0. Alegeți-vă rolul
 
-Recomandările diferă după cine implementează. Toate pornesc de la aceeași idee: **avertizarea vine din amonte, senzorii locali confirmă, alerta publică e a statului.**
+Recomandările diferă după cine implementează. Toate pornesc de la aceeași idee: **avertizarea vine din amonte, pe canale oficiale; senzorii locali confirmă; alerta publică e a statului.** Cu surse publice nu veți „bate” RO-Alert-ul (vezi [02](02-surse-predictie.md) §1.4) – asta nu e scopul.
 
 | Rol | Ce puteți face legal | Buget orientativ | Ce câștigă Iașul |
 |---|---|---|---|
@@ -16,8 +16,8 @@ Recomandările diferă după cine implementează. Toate pornesc de la aceeași i
 
 **Săptămâna 1 – fără cost**
 1. Un telefon Android dedicat, cu RO-Alert activat, ținut în Iași: notați ora fiecărui mesaj (manual, la început).
-2. Rulați [`analysis/ua_alerts_analysis.py`](../analysis/ua_alerts_analysis.py) mâine dimineață: va include incidentul din 31.10 și va arăta dacă alerta din Odesa a precedat și de data asta detecția moldovenească.
-3. Faceți un **jurnal de incidente** (tabel): pentru fiecare alertă – ora alertei UA, ora detecției MD, ora restricției MD, ora publicării primului articol MD, ora RO-Alert, județele, ora încetării. Completați retroactiv 29.05, 16.08, 8.09, 24.09, 31.10.
+2. Rulați [`analysis/ua_alerts_analysis.py`](../analysis/ua_alerts_analysis.py) mâine dimineață: va include cele două drone din 31.10 (Odesa și Vinnița). Atenție: după 7.09 setul are doar date de voluntari pe regiuni, care subestimează; pentru date pe raioane folosiți API-urile.
+3. Faceți un **jurnal de incidente** (tabel): pentru fiecare alertă – ora alertei UA, ora detecției MD, ora restricției MD, ora publicării primului articol MD, ora RO-Alert, județele, ora încetării. Completați retroactiv din [09-evenimente-2026](09-evenimente-2026.md) (16.08, 24.08, 8.09, 12.09, 24.09, 31.10).
 4. Cereți token-uri: alerts.in.ua și api.ukrainealarm.com.
 
 **Săptămânile 2–6 – Nivelul A (bot OSINT, cost: timp + un VPS mic)**
@@ -45,8 +45,9 @@ Recomandările diferă după cine implementează. Toate pornesc de la aceeași i
 3. **Mesaj explicit de încetare**, cu oră.
 4. **Cronologie oficială publicată după fiecare incident** (orele de la 8.09 diferă între surse: 16:30 / 16:37 / 16:47 pentru alertă și detecție; 17:33 / 17:50 / 17:55 pentru încetare).
 5. **Un punct de contact** pentru date de la senzori civili sau universitari, cu un protocol scris.
-6. **Ce protocol de informare există cu Armata Națională a R. Moldova** și dacă poate fi accelerat.
-7. Pentru Aeroportul Iași: există un plan de gestionare a incidentelor cu drone (ghidul EASA)? Cine decide suspendarea zborurilor?
+6. **O arhivă publică, citibilă automat, a mesajelor RO-Alert** (oră, zonă, text) – pentru transparență și cercetare.
+7. **Ce protocol de informare există cu Armata Națională a R. Moldova** și dacă poate fi accelerat.
+8. Pentru Aeroportul Iași: există un plan de gestionare a incidentelor cu drone (ghidul EASA)? Cine decide suspendarea zborurilor?
 
 ## 3. Ce să NU faceți
 
@@ -59,7 +60,7 @@ Recomandările diferă după cine implementează. Toate pornesc de la aceeași i
 
 ## 4. Întrebări deschise (de lămurit în următoarele săptămâni)
 
-1. **Cu ce întârziere devin publice semnalele moldovenești?** (ora postării pe Facebook/Telegram și a primului articol, față de ora evenimentului).
+1. **Semnalele ucrainene pe raioane** (date oficiale după 7.09, prin API): confirmă tiparul „8/8” și pe incidentele din sept.–oct.?
 2. **Cât de bine aud senzorii acustici dronele cu reacție?**
 3. **Ce acoperire ar cere frontiera de pe Prut a județului Iași** (număr de noduri, cost pe km)?
 4. **Există un feed RO-Alert** sau o arhivă oficială?

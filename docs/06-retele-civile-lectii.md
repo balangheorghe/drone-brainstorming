@@ -62,8 +62,9 @@
 
 - Primul radar Thales Ground Master 200 a sosit în decembrie 2023 (rază ~250 km, ~14 mil. €). Ministrul Apărării a spus public că nu oferă protecție completă ([Radio Moldova](https://radiomoldova.md/c/en/13/41)).
 - Al doilea radar, pentru drone, finanțat prin Facilitatea Europeană pentru Pace (~20 mil. €), era programat pentru prima jumătate a lui 2026 ([IPN](https://ipn.md/en/second-drone-detection-radar-will-be-operational-in-2026-confirms-7965_1111052.html)). Intrarea în funcțiune: **neconfirmată**.
-- Alertare publică prin cell broadcast (MD-ALERT): planificată pentru 2027.
-- **Implicație:** calitatea avertizării pentru Iași depinde direct de radarele moldovenești și de cât de repede publică Chișinăul. Un protocol formal de schimb de date RO–MD (dacă există) nu e public.
+- Alertare publică prin cell broadcast (MD-ALERT, ~5 mil. €): licitație în pregătire în aug. 2026, operațională estimat în 2027.
+- **Schimbul de date oficial există:** pe 12.09.2026, RO-Alert-ul din Botoșani a pornit de la o semnalare a centrelor de operații aeriene din Ucraina și R. Moldova ([Mediafax](https://www.mediafax.ro/social/ro-alert-in-botosani-sambata-dupa-amiaza-o-drona-s-a-prabusit-intr-o-localitate-din-judetul-suceava-formand-un-crater-23806064)), iar pe 8.09 RO-Alert a plecat înaintea detecției radar românești. Detaliile protocolului nu sunt publice.
+- **Implicație:** calitatea avertizării pentru Iași depinde direct de radarele moldovenești și de canalul militar MD → RO, nu de presa moldovenească (care publică abia la ~ora RO-Alert).
 
 ## 7. Rețele comunitare care au funcționat (modele de organizare)
 

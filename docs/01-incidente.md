@@ -4,9 +4,9 @@
 
 ## Pe scurt
 
-- **8 septembrie:** alerta aeriană ucraineană pentru regiunea Odesa a pornit la **16:12**; Armata R. Moldova a detectat drona la **16:20**; RO-Alert Iași la **~16:36–16:37**; drona a intrat în România la **16:37**, a zburat ~25 de minute peste NE și s-a prăbușit în R. Moldova (Mihăilenii Vechi). Lanțul de semnale publice a dat **~24 de minute** de la primul semnal UA la RO-Alert, dar **0–1 minute** între RO-Alert și intrarea în România.
+- **8 septembrie:** primele semnale publice ucrainene la **16:09–16:12** (alertă Odesa, „drone cu reacție … curs nord-vest”); Armata R. Moldova a detectat drona la **16:20**; RO-Alert Iași **16:30** (după MApN; ~16:36–16:37 după alte surse) – adică **înaintea** detecției radar românești (16:33); drona a intrat în România la **16:37**, a zburat ~25 de minute peste NE și s-a prăbușit în R. Moldova (Mihăilenii Vechi). Niciun articol moldovenesc nu a apărut înainte de RO-Alert.
 - **31 octombrie:** **două drone** au traversat R. Moldova. Prima: detectată la **16:24** (dinspre reg. Odesa), pierdută la 16:54 lângă Țibirica → RO-Alert Iași la **17:04** (+40 min). A doua: intrată la **17:50** dinspre reg. Vinnița, ieșită la **18:12** pe la Edineț, spre Botoșani → RO-Alert Botoșani **18:10**. Alerte în total în 6 județe, între 17:04 și 18:44.
-- **Ce rezultă:** avertizarea pentru Iași vine din amonte (UA → MD). Pe ultimii kilometri, o dronă cu piston face ~3 km/min, una cu reacție ~7 km/min; un senzor local dă secunde sau câteva minute.
+- **Ce rezultă:** avertizarea pentru Iași vine din amonte (UA → MD), dar **pe canale oficiale, nepublice**: RO-Alert a plecat practic odată cu (31.10: primul articol MD la 16:57, RO-Alert la 17:04) sau înaintea (8.09) primelor știri moldovenești. Pe ultimii kilometri, o dronă cu piston face ~3 km/min, una cu reacție ~7 km/min; un senzor local dă secunde sau câteva minute.
 
 ## 1. 8 septembrie 2026 (EEST)
 
@@ -16,7 +16,7 @@
 | 16:20 | Armata Națională (MD) detectează o dronă „de tip Shahed” (preliminar), dinspre Ucraina, spre Bender (prin regiunea transnistreană) | [Moldova 1](https://moldova1.md/p/84884/drona-care-a-explodat-in-raionul-rascani-este-aparatul-care-a-traversat-de-doua-ori-spatiul-aerian-al-r-moldova-inainte-de-impact); [Hromadske](https://hromadske.ua/en/europa/270710-shahed-drone-flies-through-moldova-into-romania-prompting-nato-jets-to-scramble) |
 | 16:30 | MD restricționează spațiul aerian în centru | [Digi24](https://www.digi24.ro/stiri/actualitate/alerta-pentru-drona-in-trei-judete-din-moldova-aeroportul-din-iasi-a-suspendat-temporar-toate-zborurile-3939831) |
 | 16:33 | MApN: ținta e detectată inițial **la vest de Chișinău**, spre vest (comunicat ulterior) | [Euronews RO](https://www.euronews.ro/articole/cronologie-drona-care-a-survolat-romania-30-de-minute-si-a-cazut-in-republica-mol) |
-| ~16:36–16:37 | **RO-Alert** Iași și nordul Vasluiului, apoi Suceava, Neamț, Botoșani (o sursă izolată: 16:30) | [Știrile ProTV](https://stirileprotv.ro/stiri/actualitate/filmul-alertei-de-drona-din-moldova-un-aeroport-inchis-doua-aeronave-f-18-spaniole-ridicate-si-ro-alert-in-5-judete.html); [Economedia](https://economedia.ro/alerta-ro-alert-in-iasi-si-vaslui-o-drona-se-indreapta-spre-nordul-moldovei-autoritatile-avertizeaza-asupra-posibilitatii-caderii-unor-obiecte-din-spatiul-aerian.html) |
+| 16:30 / ~16:36–16:37 | **RO-Alert** Iași și nordul Vasluiului, apoi Suceava, Neamț, Botoșani. „Începând cu 16:30” după MApN ([Newsweek RO](https://newsweek.ro/actualitate/alerta-de-drona-la-iasi-au-fost-ridicate-doua-avioane-de-lupta-reactia-mapn)); mesajul IGSU ~16:36, recepție ~16:37 după alte surse. IGSU: „dronă în spațiul aerian al R. Moldova… spre Iași – nordul Vasluiului” | [Știrile ProTV](https://stirileprotv.ro/stiri/actualitate/filmul-alertei-de-drona-din-moldova-un-aeroport-inchis-doua-aeronave-f-18-spaniole-ridicate-si-ro-alert-in-5-judete.html); [Economedia](https://economedia.ro/alerta-ro-alert-in-iasi-si-vaslui-o-drona-se-indreapta-spre-nordul-moldovei-autoritatile-avertizeaza-asupra-posibilitatii-caderii-unor-obiecte-din-spatiul-aerian.html) |
 | 16:37 | Drona iese din MD lângă Zagarancea (Ungheni) și intră în România (pe la Golăiești, după unele surse; „~30 km SE de Iași”, după altele) | [Apix](https://apix.ro/traseul-dronei-care-a-declansat-alerta-la-iasi-a-trecut-prin-republica-moldova-si-a-intrat-in-romania-pe-la-golaiesti/) |
 | 16:39 | Decolează 2 F-18 spaniole (Baza 57 M. Kogălniceanu) | [Mediafax](https://www.mediafax.ro/social/ro-alert-in-cinci-judete-din-moldova-mapn-o-drona-detectata-la-18-kilometri-de-roman-doua-avioane-f-18-ridicate-in-aer-23803792) |
 | după RO-Alert | Aeroportul Iași suspendă zborurile | [Radio Constanța](https://www.radioconstanta.ro/2026/09/08/zborurile-de-pe-aeroportul-international-iasi-suspendate-dupa-mesajul-ro-alert-privind-detectarea-unei-drone/) |
@@ -73,21 +73,25 @@ Nicio sursă nu raportează prăbușiri în R. Moldova.
 
 | Interval | 8.09 | 31.10 – drona 1 | 31.10 – drona 2 |
 |---|---|---|---|
-| Alertă UA (reg.) → detecție MD | 8 min (Odesa) | *date disponibile de mâine* | *idem (Vinnița)* |
-| Detecție MD → RO-Alert primul județ | ~16–17 min | **40 min** (Iași) | **20 min** (Botoșani) |
-| Restricție MD → RO-Alert | ~6–7 min | 18 min | – |
+| Primul semnal public UA → detecție MD | 8–11 min (16:09–16:12 → 16:20) | *de verificat mâine* | *idem (Vinnița)* |
+| Detecție MD → RO-Alert primul județ | 10–17 min | **40 min** (Iași) | **20 min** (Botoșani) |
+| **Primul articol MD publicat → RO-Alert** | **≤ 0** (niciunul înainte) | **~7 min** (16:57 → 17:04) | necunoscut |
+| Restricție MD (ora evenimentului) → RO-Alert | 0–7 min | 18 min | – |
 | RO-Alert → intrare în România | **0–1 min** | necunoscut | ~2 min înainte de ieșirea din MD |
 | Durata alertei | ~57 min | nepublicată | nepublicată |
 
-**Atenție:** orele din tabel sunt orele *evenimentelor* declarate. Când au devenit publice mesajele moldovenești (postări, articole) nu știm încă; de exemplu, actualizarea despre Țibirica pare să fi apărut la ~17:10, după RO-Alert-ul de la 17:04. Avansul real pentru un sistem automat poate fi mai mic.
+**Atenție:** majoritatea orelor din tabel sunt orele *evenimentelor* declarate, nu ale publicării. Rândul „primul articol MD publicat” arată ce ar fi văzut un sistem automat: pe 31.10, textul de la 16:57 dădea încă direcția spre Plopi (est), iar „Țibirica” a apărut abia pe la 17:10, după RO-Alert. Concluzie: **sursele publice moldovenești nu bat RO-Alert-ul**; autoritățile primesc datele pe canale oficiale.
 
 ## 4. Context: alte incidente relevante din 2026
+
+Lista completă: [09-evenimente-2026](09-evenimente-2026.md).
 
 | Data | Ce | Sursă |
 |---|---|---|
 | 29.05, ~01:50 | Geran-2 pe un bloc din Galați; RO-Alert cu doar câteva minute înainte (R. Arafat) | [Capital](https://www.capital.ro/o-drona-s-a-prabusit-peste-pe-un-bloc-din-galati-mapn-si-igsu-au-reactionat-urgent-dupa-ce-explozia-a-provocat-un-incendiu.html); [BZI](https://www.bzi.ro/raed-arafat-avertisment-dupa-explozia-dronei-din-galati-mesajele-ro-alert-trebuie-luate-in-serios-mapn-confirma-ca-drona-era-ruseasca-de-tip-geran-2-5544866) |
 | 16.08, 04:44 → 05:01 | intrare dinspre MD, doborâtă de un F-18 spaniol deasupra Galațiului (MD: Shahed-136/Geran-2) | [Euronews](https://www.euronews.com/2026/08/16/nato-fighter-jets-shoot-down-drone-over-romania-near-moldova-border) |
-| 24.09, dimineața | dronă mică prăbușită la Solca (Suceava), intrată prin nordul Botoșaniului | [Economica](https://www.economica.net/video-anunt-mapn-drona-aeriana-prabusita-in-apropierea-localitatii-solca-din-judetul-suceava_979381.html) |
+| 12.09, 15:26 → 16:20 | MD detectează o dronă la Vasilcău (Soroca); RO-Alert Botoșani la 16:20, pornit de la o semnalare a centrelor de operații aeriene din Ucraina și R. Moldova; drona cade la Botoșenița Mare (SV) | [Mediafax](https://www.mediafax.ro/social/ro-alert-in-botosani-sambata-dupa-amiaza-o-drona-s-a-prabusit-intr-o-localitate-din-judetul-suceava-formand-un-crater-23806064) |
+| 24.09, 06:14 → 06:26 | MD: dronă dinspre Chelimenți (reg. Cernăuți); RO-Alert Botoșani și Suceava 06:26; dronă mică prăbușită la Solca (Suceava), intrată prin nordul Botoșaniului | [Economica](https://www.economica.net/video-anunt-mapn-drona-aeriana-prabusita-in-apropierea-localitatii-solca-din-judetul-suceava_979381.html) |
 | 3.10 | MD: 5–6 zboruri neautorizate în ~15 min, în timpul unui atac masiv | [Ukrainska Pravda](https://www.pravda.com.ua/eng/news/2026/10/03/8056292/) |
 | 17.10, ~18:00 | 2 drone „cu reacție din familia Geran” doborâte de F-16 lângă Sulina | [Euronews](https://www.euronews.com/2026/10/17/romanian-f-16s-shoot-down-two-drones-over-black-sea-authorities-say) |
 

@@ -6,7 +6,7 @@
 
 - **Contra Shahed contează radarul și acusticul.** Detectoarele RF clasice caută legătura telecomandă–dronă, iar Shahed zboară preprogramat.
 - **Cel mai ieftin model dovedit la scară:** rețeaua acustică ucraineană (câteva sute de USD pe nod).
-- **Repere de preț pentru radar:** Echodyne EchoGuard sub ~50.000 USD/unitate; EchoShield ~160.000 USD; Robin IRIS – prețul nu e public (o cifră de ~500.000 € circulă fără sursă clară).
+- **Prețurile sunt aproape toate „pe proiect”:** pentru Echodyne circulă ~40–50.000 USD (EchoGuard) și ~160.000 USD (EchoShield), neverificate; pentru Robin IRIS, ~500.000 € fără sursă clară; pentru DroneShield, Dedrone și Aaronia n-am găsit prețuri publice (DroneShield vinde și abonamente software). Cereți oferte.
 - **Model de caiet de sarcini:** CNAB (Otopeni/Băneasa, aug. 2026) – detecție de la minimum 5 km, 24/7, pe orice vreme.
 - **Pentru Iași n-am găsit niciun proiect public de detecție** (aeroport, Consiliu Județean, Primărie).
 - **Bani publici:** SAFE România (16,68 mld. € aprobat în mai 2026, din care ~2,2 mld. € anunțate pentru sisteme anti-dronă); inițiativele UE EDDI și Eastern Flank Watch.
@@ -15,9 +15,9 @@
 
 | Produs | Țintă mică | Clasă Shahed / maxim | Preț | Note | Sursă |
 |---|---|---|---|---|---|
-| Robin Radar IRIS (NL) | 5 km | mod Long-Range 12 km pentru Shahed | nepublic | ~200 de unități raportate în Ucraina | [Defense Post](https://thedefensepost.com/2025/09/22/robin-iris-radar); [Forces News](https://www.forcesnews.com/ukraine/shaheds-less-likely-get-through-drone-detecting-iris-radar-gets-upgrade) |
-| Echodyne EchoGuard (SUA) | DJI Mavic/Phantom ~0,9 km | – | < ~50.000 USD | contract de 20 mil. USD cu vama SUA | [Janes](https://www.janes.com/defence-intelligence-insights/defence-news/update-echodyne-develops-family-of-metamaterial-electronically-scanning-arr) |
-| Echodyne EchoShield | ~3 km | – | ~160.000 USD (CEO) | | [Defense News](https://www.defensenews.com/industry/2026/07/02/in-red-hot-counter-drone-market-echodyne-ceo-sees-radar-demand-boom/) |
+| Robin Radar IRIS (NL) | 5 km (rază instrumentată) | mod Long-Range 12 km, dezvoltat și testat în Ucraina, pentru Shahed (declarația firmei) | nepublic | ~200 de unități raportate în Ucraina | [Defense Post](https://thedefensepost.com/2025/09/22/robin-iris-radar); [Forces News](https://www.forcesnews.com/ukraine/shaheds-less-likely-get-through-drone-detecting-iris-radar-gets-upgrade) |
+| Echodyne EchoGuard (SUA) | DJI Mavic/Phantom ~0,9 km | – | pe proiect (~40–50k USD în presă, neverificat) | contract de 20 mil. USD cu vama SUA | [Janes](https://www.janes.com/defence-intelligence-insights/defence-news/update-echodyne-develops-family-of-metamaterial-electronically-scanning-arr) |
+| Echodyne EchoShield | ~3 km | – | ~160.000 USD (CEO, citat de presă, neverificat) | | [Defense News](https://www.defensenews.com/industry/2026/07/02/in-red-hot-counter-drone-market-echodyne-ceo-sees-radar-demand-boom/) |
 | Hensoldt Spexer 2000 3D MkIII (DE) | teste UAV 0,1–5 km | până la 40 km | nepublic | radarul vehiculului Skyranger 30; livrat Ucrainei | [EDR](https://www.edrmagazine.eu/hensoldt-unveils-its-new-spexer-2000-3rd-gen-radar-for-c-uas-and-not-only) |
 | Blighter A800 Mk2 (UK) | micro-drone > 2 km | până la 20 km | nepublic | | [Cambridge Network](https://www.cambridgenetwork.co.uk/news/blighter-supplies-4d-multi-mode-radars-eastern-european-army) |
 | Saab Giraffe 1X (SE) | ~4 km drone foarte mici | ~75 km | UK: ~25,6 mil. USD pentru 11 bucăți (cu suport) | radar militar | [Defense Post](https://thedefensepost.com/2026/02/26/giraffe-1x-radar-guide/) |
@@ -65,7 +65,7 @@
 
 | Program | Stadiu | Relevanță pentru Iași |
 |---|---|---|
-| **SAFE România** | 16,68 mld. € aprobate (mai 2026); prima tranșă de 15% primită ([MApN](https://english.mapn.ro/cpresa/6852_Romania-Receives-First-Payment-under-the-SAFE-Instrument); [Overt Defense](https://www.overtdefense.com/2026/05/28/europe-approves-e16-billion-safe-deal-for-romania/)) | lobby pentru senzori la granița cu R. Moldova |
+| **SAFE România** | 16,68 mld. € (a doua alocare din UE, după Polonia); data exactă a aprobării diferă între surse; prima tranșă de 15% primită ([MApN](https://english.mapn.ro/cpresa/6852_Romania-Receives-First-Payment-under-the-SAFE-Instrument); [Overt Defense](https://www.overtdefense.com/2026/05/28/europe-approves-e16-billion-safe-deal-for-romania/)) | lobby pentru senzori la granița cu R. Moldova |
 | **SAFE – sisteme anti-dronă** | ~2,2 mld. € anunțate; livrări de la mijlocul lui 2027, pe ~2,5 ani ([Digi24](https://www.digi24.ro/digieconomic/macro/romania-va-cumpara-noi-sisteme-anti-drona-prin-programul-safe-ministrul-apararii-livrarile-incep-di)) | **ținta principală de lobby**: acoperirea NE |
 | **12 radare Thales GM200** prin SAFE | contractate | supraveghere la nivel național |
 | Context (neutralizare, nu detecție) | Merops (operațional din 2026), SPYDER, Skyranger 35 / Skynex (livrări până în 2030) | capacitate națională; nu e ceva ce poate cere un oraș |

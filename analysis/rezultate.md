@@ -1,15 +1,63 @@
 
-## Rate de bază 2026 (date voluntari eTryvoga, 2026-01-01 → 2026-10-31 03:24 UTC)
+## Rate de bază 2026
 
-| Regiune | Alerte | Zile cu alertă | % din timp cu alertă activă |
+Oficial (raioane): 2026-01-01 → 2026-09-07 05:28 UTC. Voluntari (doar regiune, subestimează): 2026-01-01 → 2026-10-31 03:24 UTC.
+
+| Regiune | % timp în alertă – oficial (oricare raion) | % timp – voluntari | Alerte voluntari |
 |---|---|---|---|
-| Odeska oblast | 1979 | 293 | 9.5% |
-| Mykolaivska oblast | 2565 | 298 | 14.9% |
-| Vinnytska oblast | 584 | 188 | 3.6% |
-| Chernivetska oblast | 218 | 98 | 4.9% |
-| oricare din Odeska | – | – | 9.5% |
-| oricare din Odeska, Vinnytska, Chernivetska | – | – | 15.8% |
-| oricare din Odeska, Mykolaivska, Vinnytska, Chernivetska | – | – | 26.4% |
+| Odeska oblast | 19.4% | 9.5% | 1979 |
+| Mykolaivska oblast | 24.0% | 14.9% | 2565 |
+| Vinnytska oblast | 4.9% | 3.6% | 584 |
+| Chernivetska oblast | 1.7% | 4.9% | 218 |
+| oricare din Odeska, Vinnytska, Chernivetska | 21.8% | 15.8% | – |
+| oricare din Odeska, Mykolaivska, Vinnytska, Chernivetska | 34.8% | 26.4% | – |
+
+### Pe raioane (oficial)
+
+| Raion | % timp în alertă |
+|---|---|
+| Chernivetska oblast / Chernivetskyi raion | 1.3% |
+| Chernivetska oblast / Dnistrovskyi raion | 1.7% |
+| Chernivetska oblast / Vyzhnytskyi raion | 1.2% |
+| Odeska oblast / Berezivskyi raion | 5.9% |
+| Odeska oblast / Bilhorod-Dnistrovskyi raion | 11.6% |
+| Odeska oblast / Bolhradskyi raion | 11.6% |
+| Odeska oblast / Izmailskyi raion | 11.6% |
+| Odeska oblast / Odeskyi raion | 12.6% |
+| Odeska oblast / Podilskyi raion | 5.9% |
+| Odeska oblast / Rozdilnianskyi raion | 5.9% |
+| Vinnytska oblast / Haisynskyi raion | 4.3% |
+| Vinnytska oblast / Khmilnytskyi raion | 3.7% |
+| Vinnytska oblast / Mohyliv-Podilskyi raion | 3.5% |
+| Vinnytska oblast / Tulchynskyi raion | 3.7% |
+| Vinnytska oblast / Vinnytskyi raion | 4.1% |
+| Vinnytska oblast / Zhmerynskyi raion | 3.5% |
+
+## Detecții R. Moldova vs. alerte UA în regiunea de plecare
+
+| Detecție MD | UTC | Regiune UA | Sursa datelor | Alertă activă? | Pornită cu (min) | Raioane în alertă |
+|---|---|---|---|---|---|---|
+| 30.03 Comarivka → Orhei | 2026-03-30 18:29 | Odeska oblast | oficial | DA | 32 | Berezivskyi, Podilskyi, Rozdilnianskyi |
+| 13.05 dinspre Mohyliv-Podilskyi | 2026-05-13 13:00 | Vinnytska oblast | oficial | DA | 424 | Haisynskyi, Mohyliv-Podilskyi, Tulchynskyi, Vinnytskyi, Zhmerynskyi |
+| 16.08 Etulia → Galați | 2026-08-16 01:31 | Odeska oblast | oficial | DA | 46 | Bilhorod-Dnistrovskyi, Bolhradskyi, Izmailskyi |
+| 17.08 Cuciurgan → Tiraspol | 2026-08-17 14:37 | Odeska oblast | oficial | DA | 12 | Berezivskyi, Odeskyi, Podilskyi, Rozdilnianskyi |
+| 20.08 Etulia | 2026-08-20 00:16 | Odeska oblast | oficial | DA | 160 | Berezivskyi, Bilhorod-Dnistrovskyi, Bolhradskyi, Izmailskyi, Odeskyi, Podilskyi, Rozdilnianskyi |
+| 24.08 dinspre Vinogradovka → Cahul → Galați | 2026-08-24 02:55 | Odeska oblast | oficial | DA | 91 | Berezivskyi, Bilhorod-Dnistrovskyi, Bolhradskyi, Izmailskyi, Odeskyi, Podilskyi, Rozdilnianskyi |
+| 26.08 Palanca | 2026-08-26 14:38 | Odeska oblast | oficial | DA | 36 | Berezivskyi, Odeskyi, Podilskyi, Rozdilnianskyi |
+| 27.08 5 drone, noaptea (regiune presupusă) | 2026-08-27 00:56 | Odeska oblast | oficial | DA | 112 | Berezivskyi, Bilhorod-Dnistrovskyi, Bolhradskyi, Izmailskyi, Odeskyi, Podilskyi, Rozdilnianskyi |
+| 08.09 → Bender → Iași | 2026-09-08 13:20 | Odeska oblast | voluntari | DA | 8 | (regiune) |
+| 12.09 Vasilcău (Soroca) → Botoșani | 2026-09-12 12:26 | Vinnytska oblast | voluntari | nu |  |  |
+| 24.09 dinspre Chelimenți (Cernăuți) → Solca | 2026-09-24 03:14 | Chernivetska oblast | voluntari | nu |  |  |
+| 30.09 Bender (regiune presupusă) | 2026-09-30 02:43 | Odeska oblast | voluntari | nu |  |  |
+| 30.09 Lunga (Dubăsari), cu reacție | 2026-09-30 07:26 | Odeska oblast | voluntari | DA | 2 | (regiune) |
+| 03.10 5 drone, dimineața (regiune presupusă) | 2026-10-03 04:45 | Odeska oblast | voluntari | nu |  |  |
+| 16.10 Sobari (Soroca) | 2026-10-16 13:22 | Vinnytska oblast | voluntari | nu |  |  |
+| 23.10 dinspre Verhnia Slobidka (Vinnița) | 2026-10-23 10:59 | Vinnytska oblast | voluntari | nu |  |  |
+| 31.10 drona 1, dinspre Semionovca | 2026-10-31 14:24 | Odeska oblast | – | _date indisponibile încă_ | – | – |
+| 31.10 drona 2, dinspre Mihailovka (Vinnița) | 2026-10-31 15:50 | Vinnytska oblast | – | _date indisponibile încă_ | – | – |
+
+- **oficial:** alertă activă în regiunea de plecare la 8/8 detecții.
+- **voluntari:** alertă activă în regiunea de plecare la 2/8 detecții.
 
 ## Alerte ucrainene în jurul incidentelor
 

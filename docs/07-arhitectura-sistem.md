@@ -10,6 +10,7 @@
   - **C. Strat instituțional** (1–3 ani): B + senzori autorizați (radar), integrare cu ISU și aeroportul, finanțare publică.
 - **Regula de aur:** sistemul civic **nu emite alerte publice de tip „adăpostiți-vă”** și nu anticipează public RO-Alert până nu are o precizie măsurată. Public: doar retransmiterea mesajelor oficiale și cronologii după incident.
 - **Primul lucru de făcut:** arhivarea cu oră de primire a tuturor semnalelor, din ziua 1. Fără ea nu se poate calibra nimic.
+- **Așteptări realiste (măsurate):** sursele publice moldovenești apar la ~ora RO-Alert (31.10: 16:57 vs. 17:04; 8.09: după). Doar semnalele ucrainene vin clar mai devreme (10–90+ min), dar sunt nespecifice. Valoarea sistemului e vigilența internă, jurnalul și confirmarea locală – nu „minute câștigate” față de RO-Alert pentru public.
 
 ## 1. Diagrama
 
@@ -43,10 +44,10 @@
 |---|---|---|---|
 | 1 | alerts.in.ua | REST cu token, polling ~10–15 s (sub limita de rată) | vigilență (UA) |
 | 2 | ukrainealarm API | webhook cu token | vigilență, redundanță |
-| 3 | @kpszsu | `t.me/s/kpszsu` sau Telethon cu cont dedicat; **ID numeric fixat** | direcție – **doar intern** |
-| 4 | Presă MD (ZdG, TV8, Pro TV Chișinău, Ziar.md, NordNews), MApN MD | RSS / scraping la 30–60 s | detecții și restricții MD |
+| 3 | @kpszsu, @warningodesa | `t.me/s/<canal>` (previzualizare publică activă) sau Telethon cu cont dedicat; **ID numeric fixat** | direcție – **doar intern** |
+| 4 | army.md („Informează!”), presă MD (Unimedia, ZdG, Realitatea.md, TV8, IPN, Newsmaker), agregatorul news.yam.md | RSS unde există / scraping la 30–60 s | detecții și restricții MD (publicate la ~ora RO-Alert) |
 | 5 | MApN, Agerpres, ISU Iași, Prefectura Iași | RSS / scraping | confirmare oficială |
-| 6 | RO-Alert | telefon Android dedicat, jurnalizare locală (sau confirmare manuală a operatorului) | adevărul de referință pentru KPI |
+| 6 | RO-Alert | telefon Android dedicat. Atenție: alertele de urgență ajung doar la aplicația de sistem pentru cell broadcast, nu la aplicații obișnuite. De testat: o aplicație care citește *notificarea* afișată de sistem (NotificationListenerService), `adb logcat` pe un telefon conectat la un Raspberry Pi, sau confirmare manuală a operatorului | adevărul de referință pentru KPI |
 | 7 | ADS-B civil (adsb.lol, OpenSky) | REST, geofence LUKK + LRIA | anomalii de trafic (oprire, așteptare, deviere) |
 | 8 | Istoric UA (GitHub, zilnic) | descărcare CSV | calibrare, backtest |
 | 9 | Meteo (Open-Meteo) | REST | factor secundar; vânt pentru senzorii acustici |
@@ -67,7 +68,7 @@
 | S0 Fond | implicit | – |
 | S1 Vigilență | alertă activă în Odesa / Vinnytsia / Chernivtsi | nu |
 | S2 Direcție UA | @kpszsu sau surse UA: „curs spre” Moldova / Podilsk / Izmail / Mohyliv-Podilskyi | nu |
-| S3 Moldova | detecție anunțată de MD sau restricție de spațiu aerian (o sursă oficială sau două de presă) | nu (intern) |
+| S3 Moldova | detecție anunțată de MD sau restricție de spațiu aerian (o sursă oficială sau două de presă) – publicate de obicei la ~ora RO-Alert | nu (intern) |
 | S4 Apropiere | ultima poziție MD în jumătatea vestică, curs spre Prut, ETA Iași ≤ 30 min; sau anomalie la LRIA | nu (intern; grup închis) |
 | S5 Oficial | RO-Alert înregistrat sau comunicat MApN | **da: retransmitere** |
 | S6 Încheiat | încetare oficială sau decădere | **da: încetare + cronologie** |
@@ -91,7 +92,7 @@ logit P  = logit(p0[stare])
 fiecare termen decade în timp: x * exp(-(t - t_obs) / tau),  tau ≈ 20–45 min
 ```
 
-**Onestitate:** coeficienții sunt deocamdată inventați. Cu 2 evenimente la Iași nu se poate calibra nimic. Calibrarea se face pe **toate** încălcările spațiului aerian moldovenesc (65 în 2026) și pe toate RO-Alert-urile de dronă din NE și SE, legate de istoricul alertelor UA (vezi [02-surse-predictie](02-surse-predictie.md) §1). Până atunci, scorul doar **ordonează** ipotezele.
+**Onestitate:** coeficienții sunt deocamdată inventați. Cu 2 evenimente la Iași nu se poate calibra nimic. Calibrarea se face pe **toate** încălcările spațiului aerian moldovenesc (65 în 2026) și pe toate RO-Alert-urile de dronă din NE și SE, legate de istoricul alertelor UA (vezi [02-surse-predictie](02-surse-predictie.md) §1). Până atunci, scorul doar **ordonează** ipotezele. Primul punct de sprijin măsurat: alerta UA pe raioane era activă la 8/8 detecții moldovenești, dar e activă ~20% din timp → raport de verosimilitate de ordinul 4–5 pentru termenul `alerta_UA_activă`.
 
 **De ce nivelurile de pre-alertă rămân interne:** 65 de încălcări moldovenești → 2 RO-Alert-uri la Iași. Un „ATENȚIE” public la fiecare detecție moldovenească ar fi greșit în ~97% din cazuri; unul la fiecare alertă din Odesa, în >99,9%. Asta produce oboseală și neîncredere – exact opusul scopului.
 
@@ -99,7 +100,9 @@ fiecare termen decade în timp: x * exp(-(t - t_obs) / tau),  tau ≈ 20–45 mi
 
 Reguli: nume și design care **nu** seamănă cu RO-Alert sau cu o instituție; prefix „[NEOFICIAL]”; oră + sursă în fiecare mesaj; corecții publice; nicio instrucțiune care contrazice autoritățile; niciodată capturi de ecran RO-Alert.
 
-> **[INTERN] ATENȚIE · 16:48 EET.** H-0042: MD a anunțat detecție (16:24) și restricție nord (16:46). Ultima poziție: Telenești, curs V. ETA Prut 7–21 min, Iași 9–28 min (estimare, linie dreaptă). Scor necalibrat 0,4. Verificați RO-Alert, pregătiți retransmiterea.
+> **[INTERN] VIGILENȚĂ · 16:12 EEST (8.09).** Alertă UA activă în reg. Odesa; monitorizare UA: drone cu reacție, curs nord-vest. ETA maxim spre Iași dacă intră în MD: ~20–60 min. Fără acțiune publică.
+
+> **[INTERN] ATENȚIE · 16:58 EET (31.10).** Presa MD (16:57): dronă detectată la 16:24, restricție în nord la 16:46; poziție publicată: zona Telenești/Bănești. ETA Prut 7–21 min, Iași 9–28 min (estimare, linie dreaptă). Scor necalibrat. Verificați RO-Alert, pregătiți retransmiterea. *(În realitate, RO-Alert a venit la 17:04.)*
 
 > **[NEOFICIAL] RETRANSMITERE · 17:04 EET.** Autoritățile au emis RO-Alert pentru [zona din mesaj]. Textul oficial: „[citat]”. Urmați doar instrucțiunile oficiale. Observațiile se raportează la 112.
 

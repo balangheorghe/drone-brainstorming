@@ -4,10 +4,10 @@
 
 ## Pe scurt
 
-1. **Senzorii locali dau secunde–minute, nu zeci de minute.** Un Geran-2 (~180 km/h) parcurge un km în ~20 s; o dronă cu reacție (~450 km/h) în ~8 s. Un senzor acustic cu raza de 2–5 km dă ~40–100 s (piston) sau ~16–40 s (reacție). Avertizarea reală vine din amonte ([02](02-surse-predictie.md)).
+1. **Senzorii locali dau secunde–minute, nu zeci de minute.** Un Geran-2 (~180 km/h) parcurge un km în ~20 s; o dronă cu reacție (~450 km/h) în ~8 s. Un senzor acustic cu raza de 2–5 km dă, ținând cont și de întârzierea sunetului, ~30–80 s (piston) sau ~10–25 s (reacție). Avertizarea reală vine din amonte ([02](02-surse-predictie.md)).
 2. **Acusticul e singura modalitate ieftină, dovedită la scară mare și accesibilă civililor** (Sky Fortress în Ucraina, Drone Rada în Lituania). **Necunoscută importantă:** cât de bine aude dronele cu reacție, care au fost probabil 2 din 3 cazuri de referință în 2026.
 3. **RF pasiv nu funcționează contra Shahed pentru un civil.** E însă excelent și ieftin (< 100 €) pentru dronele civile mici care emit Remote ID.
-4. **Radarul potrivit pentru ținte de 0,01–0,1 m²** e echipament profesional (zeci–sute de mii de euro) și cere licență ANCOM.
+4. **Radarul potrivit pentru ținte mici, ca Shahed,** e echipament profesional (ordinul zecilor–sutelor de mii de euro, prețuri pe proiect) și cere licență ANCOM.
 5. **Camerele termale** sunt bune pentru confirmare, dacă altcineva le spune unde să se uite.
 
 ## 1. Ținta
@@ -17,11 +17,11 @@
 | Viteză Geran-2 (piston) | ~180 km/h croazieră, ~185–190 max | [drone-warfare](https://drone-warfare.com/research/shahed-136/) |
 | Viteză Geran-3 (reacție) | 300–370 km/h (HUR); ~400–470 implicit în incidentele din 2026 | [CSIS](https://missilethreat.csis.org/missile/shahed-238/); [02](02-surse-predictie.md) |
 | Altitudine | de la zeci de metri (faza de atac) la 1–4 km | variabil, ales tactic |
-| Secțiune radar (RCS) | 0,01–0,1 m² (estimări open-source) | [drone-warfare](https://drone-warfare.com/counter-uas/countering-the-shahed-136/) |
+| Secțiune radar (RCS) | nicio estimare publică solidă; circulă 0,01–0,1 m² (neverificat); piloții ucraineni descriu ecoul ca „un stol de păsări” | [drone-warfare](https://drone-warfare.com/counter-uas/countering-the-shahed-136/) |
 | Sunet | motor în 2 timpi, 4 cilindri (MD-550); energia sub ~3 kHz, „ca o motocoasă foarte zgomotoasă” | [studiu](https://computingonline.net/computing/article/view/4023/1244) |
 | Emisii radio | GNSS doar recepționează; unele variante au modem 3G/LTE cu SIM sau modem mesh | [TWZ](https://www.twz.com/shahed-136-with-cellular-modem-found-in-ukraine-what-it-means); [RFE/RL via Migflug](https://migflug.com/afterburner/geran-4-teardown-rfe-rl-foreign-components-2026/) |
 
-**Cât timp câștigi cu o rază de detecție dată:**
+**Cât timp câștigi cu o rază de detecție dată** (geometric; pentru senzorii acustici scădeți întârzierea sunetului, ~3 s/km):
 
 | Rază | Geran-2 (180 km/h) | reacție 370 km/h | reacție 450 km/h |
 |---|---|---|---|
@@ -35,8 +35,8 @@
 ### 2.1 Acustic – prioritatea nr. 1 pentru civili și ONG-uri
 
 **Ce se știe:**
-- **Sky Fortress (Ucraina):** ~9.500 (sau peste 10.000) de senzori; cost raportat de la ~300 USD (componente comerciale, [raport SHIELD 2024](https://www.missiledefenseadvocacy.org/wp-content/uploads/2024/07/Team-6-Acoustic-Lily-Pads-Final-Report.pdf)) la ~400–1.000 USD pe nod ([Odessa Journal](https://odessa-journal.com/ukrainian-engineers-have-created-a-network-of-nearly-10000-acoustic-sensors-to-track-russian-drones)). Armata SUA a publicat în 2026 un raport despre lecțiile acestei rețele ([„Listening to the Sky”](https://api.army.mil/e2/c/downloads/2026/04/30/af450e75/no-26-1115-listening-to-the-sky-acoustic-drone-detection-in-ukraine-mar-26.pdf)).
-- **Raza față de Shahed:** tipic 2–3 km, până la ~5 km (declarat; [drone-warfare](https://drone-warfare.com/counter-uas/acoustic-detection/), [Baltic Defense Initiative](https://balticdefenseinitiative.com/programs/acoustic-sensor-network/)); 5–8 km doar „în deșert liniștit” – nerelevant pentru Iași.
+- **Sky Fortress (Ucraina):** ~9.500 de senzori în 2024 (gen. James Hecker, USAFE), peste 10.000 și până la ~14.000 în surse din 2026 (NATO JALLC, ian. 2026). Cost: ~300 USD pentru senzorul inițial (Hecker, citat de Defense One; [raport SHIELD 2024](https://www.missiledefenseadvocacy.org/wp-content/uploads/2024/07/Team-6-Acoustic-Lily-Pads-Final-Report.pdf)); surse ulterioare dau ~400–1.000 USD pe nod ([Odessa Journal](https://odessa-journal.com/ukrainian-engineers-have-created-a-network-of-nearly-10000-acoustic-sensors-to-track-russian-drones)). Armata SUA a publicat în 2026 un raport despre lecțiile acestei rețele ([„Listening to the Sky”](https://api.army.mil/e2/c/downloads/2026/04/30/af450e75/no-26-1115-listening-to-the-sky-acoustic-drone-detection-in-ukraine-mar-26.pdf)).
+- **Raza față de Shahed:** tipic 2–3 km, până la ~5 km (declarat; [drone-warfare](https://drone-warfare.com/counter-uas/acoustic-detection/), [Baltic Defense Initiative](https://balticdefenseinitiative.com/programs/acoustic-sensor-network/)). **Zvook** (UA): 5 km pentru Shahed, 7 km pentru rachete de croazieră, ~1,6% alarme false, cu o oglindă acustică de ~0,5 m pe turnuri de 10–12 m (declarat, Militarnyi ian. 2026, citat secundar). 5–8 km doar „în deșert liniștit” – nerelevant pentru Iași.
 - **Drone Rada (Lituania, iunie 2026):** telefoane Android vechi la fereastră ([LRT](https://www.lrt.lt/en/news-in-english/19/2989283/civic-initiative-turns-old-phones-into-drone-detectors-as-lithuania-fixates-on-air-defence)). Detalii în [06](06-retele-civile-lectii.md).
 
 **Arhitecturi:**
@@ -45,7 +45,9 @@
 - *Rețea TDOA:* nodurile trebuie sincronizate cu GPS (PPS); o eroare de 1 ms strică localizarea. Nodul trimite doar detecția cu marcaj de timp, nu audio brut.
 - *Clasificare ML pe nod:* nu există un set public dedicat Shahed. Seturi utile: [DADS](https://huggingface.co/datasets/geronimobasso/drone-audio-detection-samples) (MIT), [DroneAudioDataset](https://github.com/saraalemadi/DroneAudioDataset). Proiecte: [Sych-Tech](https://github.com/Sych-Tech) (voluntari ucraineni, RPi + ReSpeaker), [Batear](https://github.com/batear-io/batear) (ESP32-S3 + MEMS, ~15 USD, testat doar pe înregistrări; README-ul folosește 915 MHz, care **nu** e bandă UE). 16 kHz eșantionare ajunge.
 
-**Limite:** vânt peste ~5 m/s, ploaie, inversiuni termice (zone de umbră acustică); alarme false de la tractoare, drujbe, mopede, ultraușoare, furtuni. **Dronele cu reacție:** au alt spectru (turbină mică) – eficiența rețelelor acustice contra lor nu e documentată public (vezi §6).
+**Limite:** vânt peste ~5 m/s, ploaie, inversiuni termice (zone de umbră acustică); alarme false de la tractoare, drujbe, mopede, ultraușoare, furtuni.
+
+**Dronele cu reacție – problema deschisă:** au alt spectru (turbină mică) și n-am găsit dovezi publice că rețelele acustice le detectează la fel de bine. Clasificatoarele antrenate pe motorul cu piston trebuie reantrenate. În plus, sunetul vine cu întârziere (343 m/s): la o rază de 5 km rămân ~83 s pentru o dronă cu piston, dar doar **~25 s** la 450 km/h; la 2 km, ~33 s, respectiv ~10 s.
 
 ### 2.2 RF pasiv
 
@@ -55,7 +57,7 @@
 
 ### 2.3 Radar activ
 
-- Pentru ținte de 0,01–0,1 m²: radare profesionale. Exemple: Echodyne EchoGuard (sub ~50.000 USD/unitate, drone mici la ~1 km) și EchoShield (~3 km, ~160.000 USD după CEO, [Defense News](https://www.defensenews.com/industry/2026/07/02/in-red-hot-counter-drone-market-echodyne-ceo-sees-radar-demand-boom/)); Robin Radar IRIS cu mod de 12 km pentru Shahed (declarat, [Defense Mirror](https://defensemirror.com/news/40436)). Mai multe în [04](04-produse-programe.md).
+- Pentru ținte mici: radare profesionale. Exemple: Echodyne EchoGuard (drone mici la ~1 km) și EchoShield (~3 km) – prețuri pe proiect; cifrele de ~40–50.000 USD și ~160.000 USD din presă ([Defense News](https://www.defensenews.com/industry/2026/07/02/in-red-hot-counter-drone-market-echodyne-ceo-sees-radar-demand-boom/)) nu au putut fi verificate; Robin Radar IRIS cu mod Long-Range de 12 km pentru Shahed (declarația firmei, [Defense Mirror](https://defensemirror.com/news/40436)). Mai multe în [04](04-produse-programe.md).
 - **Licență ANCOM obligatorie** pentru emisie; banda de 24 GHz scutită de licență vizează radarele auto cu rază scurtă ([Decizia ANCOM 311/2016](https://legeaz.net/monitorul-oficial-228-2016/decizie-ancom-311-2016-frecvente-radio-exceptate-regim-licentiere)).
 - Radar marin refolosit sau FMCW DIY: **nicio dovadă** de eficiență contra Shahed. Nu investiți în asta.
 
@@ -67,7 +69,8 @@
 
 ### 2.5 Optic și termic (EO/IR)
 
-- Criteriile Johnson: detecția cere ~1,5–2 pixeli pe țintă. Pentru o țintă de ~2,3 m, FLIR dă ~1 km cu lentilă de 13 mm și ~2,2 km cu 25 mm ([FLIR](http://www.flirmedia.com/MMC/CVS/Tech_Notes/TN_0002_EN.pdf)). „Peste 5 km” e marketing.
+- Criteriile Johnson: detecția cere ~1,5–2 pixeli pe țintă. Pentru o țintă de ~2,3 m, FLIR dă ~1 km cu lentilă de 13 mm și ~2,2 km cu 25 mm ([FLIR](http://www.flirmedia.com/MMC/CVS/Tech_Notes/TN_0002_EN.pdf)).
+- Cu lentile lungi (calcul geometric, senzor 640×512 cu pixel de 12 µm): **50 mm → ~5–7 km** pentru o dronă văzută din lateral (anvergura ~2,5 m), dar doar **~1–1,4 km** văzută din față (~0,5 m); **100 mm → ~10–14 km** din lateral, ~2–3 km din față. Câmpul vizual scade la ~4–9°, deci camera trebuie îndreptată. Ceața, umiditatea și contrastul reduc mult aceste valori.
 - AI: modelele YOLO standard ratează ținte sub ~20 de pixeli; există modele specializate pe ținte termale mici ([exemplu](https://huggingface.co/RohanSardar/yolo11s_drone_tracker)) și un detector vizual Shahed-136 neverificat ([EDTH Warsaw](https://huggingface.co/shng2025/EDTH-Warsaw-shahed136-detector)).
 - **Problema de fond:** o cameră cu zoom nu poate scana cerul. Trebuie îndreptată (cueing) de un senzor acustic sau radar. Camera vizibilă e inutilă noaptea; ceața reduce mult și termicul. Incidentul din 8.09 a fost în plină zi (apus ~19:38), dar cel din 31.10 a fost **chiar la apus** (~16:56 EET, calcul astronomic): în noiembrie–februarie, după-amiezile de la Iași sunt deja întuneric.
 - **Atenție la furnizori:** agenția anticorupție ucraineană (NAZK) a inclus Hikvision și Dahua pe lista „sponsorilor războiului” ([NAZK](https://nazk.gov.ua/en/news/they-provide-eyes-for-russian-uavs-the-nacp-has-included-the-chinese-companies-hikvision-and-dahua-technology-in-the-list-)). Pentru o instituție: analiză de risc cibernetic înainte de achiziție.
@@ -122,7 +125,8 @@ ESP32-S3 DevKit (~17 €) + firmware deschis, sau un telefon Android cu aplicaț
 ## 6. Ce rămâne de verificat
 
 - Detecția acustică a dronelor cu reacție (Geran-3/4): dovezi publice, spectru, rază.
-- Câte noduri ar acoperi frontiera de pe Prut a județului Iași și ruta Ucraina → Botoșani, și la ce cost pe km.
+- Lungimea exactă a frontierei de pe Prut a județelor Iași și Botoșani (de măsurat în QGIS). Scenarii: pentru un front de 60 / 80 / 100 km, o linie simplă cere 13–51 de noduri (pas de 5 → 2 km); localizarea TDOA cere ~2× noduri (2 rânduri). La 300–600 €/nod, doar hardware: ~5–10k € (17 noduri, front de 80 km, pas de 5 km) până la ~25–50k € (~82 de noduri, TDOA). Fără alimentare, catarge, montaj, LTE, server și mentenanță. Atenție la roaming pe rețele moldovenești lângă Prut.
+- O linie pe Prut dă pentru orașul Iași (~16 km) doar ~2 min (reacție) – ~5 min (piston): strat de confirmare, nu de avertizare.
 - Raza Remote ID reală în mediul urban din Iași.
 
 ## 7. Realist vs. exagerat
