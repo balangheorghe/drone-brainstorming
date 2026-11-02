@@ -152,6 +152,21 @@ sudo journalctl -u veghe -n 50 --no-pager   # „veghe pornit”, fără „Trac
 
 Actualizare ulterioară: `sudo git -C /opt/veghe pull && sudo systemctl restart veghe`. Dacă portul 8080 e ocupat pe server, schimbați `status_port` în `config.toml`.
 
+## Test pe un calculator cu Windows (WSL)
+
+Pentru încercări, nu pentru funcționare permanentă (alertele vin doar cât calculatorul e pornit și nu doarme).
+
+```bash
+# PowerShell ca administrator, o dată: wsl --install -d Ubuntu-24.04  (Python 3.12 inclus)
+# Dacă aveți deja Ubuntu 22.04 (Python 3.10, prea vechi):
+sudo apt update && sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.11
+```
+
+- Țineți proiectul **în Linux** (ex. `~/veghe`), nu pe `/mnt/c` sau `/mnt/d`: baza SQLite pe un disc Windows văzut din WSL se poate bloca și e lentă.
+- Pornire: `cd ~/veghe && set -a; . ./.env; set +a`, apoi `python3.11 -m veghe check-sources` și `python3.11 -m veghe run` (Ctrl-C oprește). Pe Ubuntu 24.04: `python3` în loc de `python3.11`.
+- După somn/hibernare, ceasul WSL poate rămâne în urmă (serviciul vă anunță): `wsl --shutdown` în PowerShell și redeschideți Ubuntu.
+
 ## Primele 30–90 de zile („mod umbră”)
 
 - Lăsați `public_enabled = false`. Serviciul doar arhivează și trimite mesaje interne.
