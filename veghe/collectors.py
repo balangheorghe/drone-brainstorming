@@ -390,6 +390,7 @@ class Feed(Collector):
             except LookupError:
                 pass
         items = parse_feed(body)
+        self.last_raw = len(items)  # pentru check-sources: câți itemi erau înainte de filtrul pe cuvinte-cheie
         out = []
         for it in items:
             title, summary = it["title"][:500], it["summary"]

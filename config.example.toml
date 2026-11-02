@@ -53,10 +53,7 @@ channel = "kpszsu"              # Forțele Aeriene ale Ucrainei
 role = "ua_direction"
 interval = 60
 
-[[sources.telegram]]
-channel = "warningodesa"
-role = "ua_direction"
-interval = 60
+# warningodesa: scos (nov. 2026 – previzualizarea publică trimite doar la un canal privat)
 
 [[sources.telegram]]
 channel = "odeskaODA"           # Administrația militară regională Odesa

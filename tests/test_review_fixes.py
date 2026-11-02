@@ -609,3 +609,40 @@ def test_describe_error_ntfy_has_no_telegram_hints():
 
     msg = describe_error(http.HttpError(401, '{"error":"unauthorized"}'), telegram=False)
     assert "NTFY_TOKEN" in msg and "TELEGRAM" not in msg
+
+
+# --- după primul test pe WSL ------------------------------------------------------------------
+
+def test_env_file_next_to_config_is_read_automatically(tmp_path, monkeypatch):
+    from veghe.config import load, read_env_file
+
+    (tmp_path / ".env").write_bytes("﻿# comentariu\r\nTELEGRAM_BOT_TOKEN=123:abc\r\n"
+                                    "export TELEGRAM_INTERNAL_CHAT_ID=\"-5431782086\"\r\n"
+                                    "TELEGRAM_PUBLIC_CHAT_ID=\r\nTELEGRAM_OPERATOR_IDS=1,2\r\n".encode("utf-8"))
+    (tmp_path / "config.toml").write_text("[general]\n", encoding="utf-8")
+    for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_INTERNAL_CHAT_ID", "TELEGRAM_PUBLIC_CHAT_ID", "TELEGRAM_OPERATOR_IDS"):
+        monkeypatch.delenv(k, raising=False)
+    assert read_env_file(str(tmp_path / ".env"))["TELEGRAM_INTERNAL_CHAT_ID"] == "-5431782086"
+    cfg = load(str(tmp_path / "config.toml"))
+    assert cfg.secret("telegram_bot_token") == "123:abc" and cfg.secret("telegram_internal_chat_id") == "-5431782086"
+    assert cfg.operator_ids == {1, 2}
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "999:din-mediu")          # mediul are prioritate
+    assert load(str(tmp_path / "config.toml")).secret("telegram_bot_token") == "999:din-mediu"
+    assert load(str(tmp_path / "config.toml"), env={}).secret("telegram_bot_token") == ""  # env explicit: fără .env
+
+
+def test_identical_chat_ids_give_a_clear_error_not_a_traceback(tmp_path, monkeypatch, capsys):
+    from veghe.__main__ import main
+
+    (tmp_path / "config.toml").write_text(f'[general]\ndb_path = "{tmp_path / "v.db"}"\n', encoding="utf-8")
+    monkeypatch.setenv("TELEGRAM_INTERNAL_CHAT_ID", "-5431782086")
+    monkeypatch.setenv("TELEGRAM_PUBLIC_CHAT_ID", "-5431782086")
+    assert main(["--config", str(tmp_path / "config.toml"), "check-sources"]) == 2
+    assert "identice" in capsys.readouterr().err
+
+
+def test_missing_config_gives_a_clear_error(tmp_path, capsys):
+    from veghe.__main__ import main
+
+    assert main(["--config", str(tmp_path / "nu-exista.toml"), "check-sources"]) == 2
+    assert "config.example.toml" in capsys.readouterr().err

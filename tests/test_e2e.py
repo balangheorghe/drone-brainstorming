@@ -474,3 +474,17 @@ def test_restarts_while_telegram_is_down_send_a_single_start_message(tmp_path, u
     th.join(10)
     starts = [m["text"] for m in upstream.sent if "veghe pornit" in m["text"]]
     assert len(starts) == 1 and "3 porniri anterioare nelivrate" in starts[0]
+
+
+def test_check_sources_explains_filtered_feed_and_clock_skew(tmp_path, upstream, env, monkeypatch, capsys):
+    import veghe.__main__ as M
+
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace('role = "md_news"', 'role = "md_news"\nkeywords = ["inexistent"]'),
+                 encoding="utf-8")
+    real_now = M.now
+    monkeypatch.setattr(M, "now", lambda: real_now() - dt.timedelta(minutes=40))   # ceas în urmă (WSL după somn)
+    M.main(["--config", str(p), "check-sources"])
+    out = capsys.readouterr().out
+    assert "rss:md" in out and "în flux; restul nu conțin cuvintele-cheie" in out
+    assert "e cu ~40 min în urmă față de surse" in out

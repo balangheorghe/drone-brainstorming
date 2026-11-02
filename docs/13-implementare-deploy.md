@@ -4,7 +4,7 @@
 
 ## Ce face serviciul `veghe`
 
-- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, `warningodesa`, administrațiile Odesa, Cernăuți, Izmail), presa și Moldpres (RSS, Google News), trafic aerian civil (adsb.lol).
+- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, administrațiile Odesa, Cernăuți, Izmail), presa și Moldpres (RSS, Google News), trafic aerian civil (adsb.lol).
 - **Arhivează** fiecare mesaj în SQLite, cu ora de publicare și ora la care l-a primit (pentru măsurarea avansului real).
 - **Aplică regulile** din [07](07-arhitectura-sistem.md): VIGILENȚĂ → DIRECȚIE → MOLDOVA → APROPIERE → OFICIAL, cu ETA în intervalul 450/150 km/h.
 - **Trimite mesaje INTERNE** într-un grup Telegram privat (și opțional ntfy). La fiecare pornire trimite „veghe pornit”, ca să știți că livrarea merge.
@@ -45,7 +45,7 @@ Exemplu: `docker compose run --rm veghe report --since 2026-11-01T14:00:00Z`.
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
 | **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
 | **Verificarea dinaintea unirii în `master`** (instalare pas cu pas cu Docker și cu systemd, revizuirea ultimelor modificări, documentație vs. cod; fiecare constatare reverificată independent) | prima trecere: 32 de constatări confirmate, unele găsite de mai mulți verificatori (ex. ID de grup greșit = alerte pierdute fără avertizare, port ocupat = serviciu oprit, depozit privat, comenzi care nu mergeau pe serverul cu Docker); a doua trecere, pe corecturi: 12 constatări (ex. portul 8080 ocupat oprea containerul, `data/` fără drept de scriere nedetectat) – **toate corectate**, cu teste | |
-| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (109 teste în total) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (114 teste în total, pe Python 3.11–3.13) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, mesajul de test și cel de pornire, erorile Telegram explicate (token/ID greșit, bot scos), refuzul comenzilor neautorizate, modul fără operatori, `check-sources`, pagina de stare |
 | **Imaginea Docker** | construită și pornită | `docker compose build` reușește; `check-sources` rulează în container (inclusiv mesajul de test către un Telegram simulat și verificarea `data/`); healthcheck „healthy”; `/health` și `/status` răspund; „veghe pornit” la pornire; port ocupat → `VEGHE_HOST_PORT`; oprire curată la `docker compose stop`; baza de date se creează în `data/` cu drepturi doar pentru serviciu |
@@ -164,7 +164,7 @@ sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.11
 ```
 
 - Țineți proiectul **în Linux** (ex. `~/veghe`), nu pe `/mnt/c` sau `/mnt/d`: baza SQLite pe un disc Windows văzut din WSL se poate bloca și e lentă.
-- Pornire: `cd ~/veghe && set -a; . ./.env; set +a`, apoi `python3.11 -m veghe check-sources` și `python3.11 -m veghe run` (Ctrl-C oprește). Pe Ubuntu 24.04: `python3` în loc de `python3.11`.
+- Pornire, din folderul proiectului: `python3.11 -m veghe check-sources`, apoi `python3.11 -m veghe run` (Ctrl-C oprește). Fișierul `.env` de lângă `config.toml` e citit automat. Pe Ubuntu 24.04: `python3` în loc de `python3.11`.
 - După somn/hibernare, ceasul WSL poate rămâne în urmă (serviciul vă anunță): `wsl --shutdown` în PowerShell și redeschideți Ubuntu.
 
 ## Primele 30–90 de zile („mod umbră”)

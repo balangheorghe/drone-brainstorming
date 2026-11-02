@@ -47,7 +47,7 @@ Detalii: [docs/03-senzori-echipamente.md](docs/03-senzori-echipamente.md), [docs
 | Treaptă | Sursă | Avans tipic |
 |---|---|---|
 | Vigilență | alerte UA pe raioane: Odesa, Vinnytsia, Chernivtsi (alerts.in.ua, ukrainealarm) | 10 min – ore; activă ~20% din timp |
-| Direcție | Forțele Aeriene UA (@kpszsu), @warningodesa – **doar intern**, nu republicați | ~20 min (8.09) |
+| Direcție | Forțele Aeriene UA (@kpszsu); @warningodesa a trecut în nov. 2026 pe un canal privat – **doar intern**, nu republicați | ~20 min (8.09) |
 | Confirmare din amonte | Armata Națională a R. Moldova (army.md), presa MD | **0–7 min** (publicare la ~ora RO-Alert) |
 | Oficial | RO-Alert, MApN, ISU Iași, Prefectura | 0 |
 | Istoric / calibrare | setul public de alerte UA (GitHub, zilnic); jurnalul propriu | – |

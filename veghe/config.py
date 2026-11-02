@@ -62,11 +62,39 @@ class Config:
         return out
 
 
+def read_env_file(path: str) -> dict[str, str]:
+    """Citește un fișier .env simplu (CHEIE=valoare). Liniile goale și comentariile se ignoră;
+    ghilimelele din jurul valorii și terminațiile Windows (\\r) se scot."""
+    out: dict[str, str] = {}
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        if k.startswith("export "):
+            k = k[7:].strip()
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        out[k] = v
+    return out
+
+
 def load(path: str, env: dict | None = None) -> Config:
-    env = os.environ if env is None else env
+    file_env: dict[str, str] = {}
+    if env is None:
+        # .env de lângă config.toml, citit automat (pornire manuală, WSL); variabilele de mediu au prioritate
+        env = os.environ
+        file_env = read_env_file(os.path.join(os.path.dirname(os.path.abspath(path)), ".env"))
     with open(path, "rb") as f:
         raw = tomllib.load(f)
-    secrets = {k: env.get(v, "") for k, v in ENV_SECRETS.items()}
+    secrets = {k: (env.get(v) or file_env.get(v, "")) for k, v in ENV_SECRETS.items()}
     cfg = Config(raw, secrets)
     validate(cfg)
     return cfg

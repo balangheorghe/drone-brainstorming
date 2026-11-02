@@ -18,7 +18,7 @@ import signal
 import sys
 
 from . import __version__
-from .config import load, validate
+from .config import ConfigError, load, validate
 from .models import LEVEL_RO, Level, Signal
 from .store import Store
 from .timeutil import hhmm, now, parse_iso, to_local
@@ -53,15 +53,43 @@ def cmd_check_sources(args):
             continue
         ok += 1
         newest = max((s.published_at for s in sigs if s.published_at), default=None)
-        print(f"✓ {c.name:28s} {len(sigs):3d} elemente · cel mai nou: {hhmm(newest) if newest else '-'}")
+        note = ""
+        raw = getattr(c, "last_raw", None)
+        if raw is not None and raw != len(sigs):
+            note = f" (din {raw} în flux; restul nu conțin cuvintele-cheie)"
+        elif raw == 0 and "when:" in getattr(c, "url", ""):
+            note = " (fluxul caută doar știrile recente; gol când nu e nimic nou)"
+        print(f"✓ {c.name:28s} {len(sigs):3d} elemente · cel mai nou: {hhmm(newest) if newest else '-'}{note}")
         for s in sigs[-3:]:
             extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}" if s.role in ("ua_alert_state", "adsb") else ""
             print(f"      · {s.text[:140]}{extra}")
     print(f"\n{ok}/{len(cols)} surse au răspuns corect.")
+    skew = clock_skew(cols)
+    if skew is not None and abs(skew) > 120:
+        print(f"\nATENȚIE: ceasul acestui calculator e cu ~{abs(skew) / 60:.0f} min {'înainte' if skew > 0 else 'în urmă'} "
+              f"față de surse. Sincronizați ora (WSL: „wsl --shutdown” în PowerShell, apoi redeschideți Ubuntu; "
+              f"server: sudo timedatectl set-ntp true).")
     print("\nArhiva și livrarea alertelor:")
     db_ok = check_database(cfg)
     delivery_ok = check_delivery(cfg, t)
     return 0 if ok == len(cols) and delivery_ok and db_ok else 1
+
+
+def clock_skew(cols) -> float | None:
+    """Diferența (secunde) dintre ceasul local și antetul HTTP Date al surselor; cea mai mică în valoare absolută."""
+    import email.utils
+
+    t = now()
+    skews = []
+    for c in cols:
+        d = getattr(c, "last_date", None)
+        if not d:
+            continue
+        try:
+            skews.append((t - email.utils.parsedate_to_datetime(d)).total_seconds())
+        except (TypeError, ValueError):
+            continue
+    return min(skews, key=abs) if skews else None
 
 
 def check_database(cfg) -> bool:
@@ -275,6 +303,20 @@ def main(argv=None):
         pass
     logging.basicConfig(level=getattr(logging, level, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cmd = args.cmd or "run"
+    try:
+        return _dispatch(cmd, args)
+    except ConfigError as e:
+        print(f"Configurare greșită: {e}", file=sys.stderr)
+        return 2
+    except FileNotFoundError as e:
+        if e.filename and str(e.filename).endswith(".toml"):
+            print(f"Lipsește fișierul de configurare {e.filename} (copiați config.example.toml în config.toml).",
+                  file=sys.stderr)
+            return 2
+        raise
+
+
+def _dispatch(cmd, args):
     if cmd == "run":
         return cmd_run(args)
     if cmd == "check-sources":
