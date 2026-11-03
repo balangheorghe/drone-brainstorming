@@ -46,6 +46,16 @@ NOTAM_CAT_RO = {
 }
 
 NEW_DRONE_MARKERS = ("a doua drona", "o noua drona", "o alta drona", "inca o drona", "другий", "ще один", "второй", "еще один")
+# „încă un UAV”, „un nou aparat de zbor fără pilot”, „ще одна група БпЛА”, „another drone” …
+NEW_DRONE_RX = re.compile(
+    r"(?<!\w)(?:a doua|al doilea|o noua|un nou|inca o|inca un|o alta|un alt|alte doua|alti doi|a second|another|"
+    r"другий|друга|другу|ще один|ще одна|ще одну|нова|нову|інша|іншу|второй|вторая|вторую|еще один|еще одна|еще одну|новая|новую)"
+    r"\s+(?:\S+\s+){0,3}?(?:dron|uav|aparat|obiect|bpla|бпла|бпл|безпілот|беспилот|шахед|shahed|груп)")
+
+
+def is_new_drone(text: str) -> bool:
+    n = normalize(text).replace("ё", "е")
+    return any(m in n for m in NEW_DRONE_MARKERS) or bool(NEW_DRONE_RX.search(n))
 # Locuri din UA relevante (vestul reg. Odesa, Vinnytsia de lângă MD, Cernăuți)
 UA_WATCH_KEYS = {"podilsk", "rozdilna", "izmail", "reni", "bolhrad", "bilhorod", "vylkove", "mohyliv",
                  "tulchyn", "chernivtsi", "novodnistrovsk", "vinnytsia"}
@@ -89,6 +99,8 @@ class Hypothesis:
     last_msg_at: dt.datetime | None = None
     last_msg_place: str = ""
     last_msg_km: float | None = None
+    pending: tuple | None = None          # o apropiere amânată (trimisă din tick după pauză)
+    status_sent: set = field(default_factory=set)  # vești trimise o singură dată (ex. „dispărut de pe radar”)
     sources: list[str] = field(default_factory=list)
     closed: bool = False
 
@@ -246,7 +258,9 @@ class Engine:
                     self.vigilance_announced = False
                     self._save_vigilance(now)
             return msgs
-        self.vigilance_inactive_since = None
+        if self.vigilance_inactive_since is not None:
+            self.vigilance_inactive_since = None
+            self._save_vigilance(now)
         if self.vigilance_since is None:
             self.vigilance_since = now
             self.vigilance_announced = False
@@ -271,13 +285,17 @@ class Engine:
             self.vigilance_announced = True
             if near_km is not None:
                 self.vigilance_best_km = near_km if self.vigilance_best_km is None else min(self.vigilance_best_km, near_km)
+            self.vigilance_titles = set(active)
             self._save_vigilance(now)
         elif self.vigilance_best_km is None and near_km is not None:
             self.vigilance_best_km = near_km
         self.vigilance_titles = set(active)
+        if now - getattr(self, "_vig_saved_at", now - dt.timedelta(hours=1)) >= dt.timedelta(minutes=5):
+            self._save_vigilance(now)  # „la” = ultima dată când alerta era activă
         return msgs
 
     def _save_vigilance(self, now):
+        self._vig_saved_at = now
         if not self.store:
             return
         st = {"la": iso(now), "since": iso(self.vigilance_since) if self.vigilance_since else None,
@@ -301,8 +319,8 @@ class Engine:
         self.vigilance_announced = bool(st.get("announced"))
         self.vigilance_best_km = st.get("best_km")
         self.vigilance_titles = set(st.get("titles") or [])
-        # până la prima citire a stării UA, socotim pauza de la ultima stare cunoscută
-        self.vigilance_inactive_since = parse_iso(st.get("inactive_since")) or at
+        # pauza începe de la ultima stare „fără alerte” salvată sau, altfel, de la repornire
+        self.vigilance_inactive_since = parse_iso(st.get("inactive_since")) or t
 
     def _tg_alert(self, sig: Signal, now) -> list[Message]:
         # pe linii: normalize() ar transforma rândurile noi în spații și ar lipi rândul următor de localitate
@@ -330,20 +348,29 @@ class Engine:
                 hours = max((now - h.updated).total_seconds() / 3600, 0.05)
                 if geo.dist(place, h.place) > geo.V_JET_KMH * hours + 80:
                     continue
-            if best is None or h.updated > best.updated:
-                best = h
-        return best
+            d = geo.dist(place, h.place) if place is not None and h.place is not None else float("inf")
+            key = (d, -h.updated.timestamp())
+            if best is None or key < best[0]:
+                best = (key, h)
+        return best[1] if best else None
 
-    def _hyp_message(self, h: Hypothesis, kind: str, sig: Signal, now) -> list[Message]:
+    def _hyp_message(self, h: Hypothesis, kind: str, sig: Signal, now, status: str | None = None) -> list[Message]:
         place_key = h.place.key if h.place else ""
         d_km = geo.dist(h.place, self.cfg.target) if h.place else None
         level_up = h.level > h.notified
         near_level = h.level >= Level.APROPIERE
-        step = 10 if near_level else 25            # km mai aproape de Iași față de ultimul mesaj
-        gap = dt.timedelta(minutes=5 if near_level else 10)
-        closer = d_km is not None and (h.last_msg_km is None or d_km <= h.last_msg_km - step)
-        recent = h.last_msg_at is not None and now - h.last_msg_at < gap
-        if not level_up and (not closer or recent):
+        step = 10 if near_level else 25            # km mai aproape de Iași față de cel mai apropiat punct anunțat
+        first_fix = d_km is not None and h.last_msg_km is None           # prima poziție cunoscută
+        closer = d_km is not None and h.last_msg_km is not None and d_km <= h.last_msg_km - step
+        recent = h.last_msg_at is not None and now - h.last_msg_at < dt.timedelta(minutes=10)
+        # ultimul mesaj e vechi și poziția s-a schimbat (ex. a doua dronă contopită, drona s-a întors)
+        stale = (h.last_msg_at is not None and now - h.last_msg_at >= dt.timedelta(minutes=15)
+                 and place_key and place_key != h.last_msg_place)
+        new_status = bool(status) and status not in h.status_sent
+        send = level_up or first_fix or new_status or stale or (closer and (near_level or not recent))
+        if not send:
+            if closer:
+                h.pending = (kind, sig)  # apropiere reală, dar prea curând: o trimitem din tick() după pauză
             return []  # aceeași dronă, fără apropiere reală: nu repetăm mesajul
         pos = self._eta_text(h.place) if h.place else "poziție nepublicată"
         jet = " (posibil cu reacție)" if h.jet else ""
@@ -362,8 +389,11 @@ class Engine:
         h.notified = max(h.notified, h.level)
         h.last_msg_at = now
         h.last_msg_place = place_key
+        h.pending = None
+        if status:
+            h.status_sent.add(status)
         if d_km is not None:
-            h.last_msg_km = d_km
+            h.last_msg_km = d_km if h.last_msg_km is None else min(h.last_msg_km, d_km)
         return [Message("internal", kind, text, h.level, h.id, sig.role)]
 
     def _ua_direction(self, sig, f, now) -> list[Message]:
@@ -377,7 +407,7 @@ class Engine:
         if not relevant:
             return []
         place = cand[0] if cand else None
-        new_marker = any(m in normalize(sig.text) for m in NEW_DRONE_MARKERS)
+        new_marker = is_new_drone(sig.text)
         h = self._match_hyp(place, now, new_marker) or self._new_hyp(now, Level.DIRECTIE, new_marker)
         h.level = max(h.level, Level.DIRECTIE)
         h.updated, h.jet = now, h.jet or f.jet
@@ -409,7 +439,7 @@ class Engine:
             place = md[-1]
         elif md or dir_md:
             place = min(md + dir_md, key=lambda p: geo.dist(p, self.cfg.target))
-        new_marker = any(m in normalize(sig.text) for m in NEW_DRONE_MARKERS)
+        new_marker = is_new_drone(sig.text)
         h = self._match_hyp(place, now, new_marker) or self._new_hyp(now, Level.MOLDOVA, new_marker)
         h.level = max(h.level, Level.MOLDOVA)
         h.updated, h.jet = now, h.jet or f.jet
@@ -422,7 +452,7 @@ class Engine:
             h.level = max(h.level, Level.APROPIERE)
         kind = "apropiere" if approach else "moldova"
         self._event(h.level, h.id, kind, self._excerpt(sig.text, 300), now)
-        return self._hyp_message(h, kind, sig, now)
+        return self._hyp_message(h, kind, sig, now, status="disparut" if f.lost_or_left else None)
 
     # ------------------------------------------------------------------ oficial (RO)
     def _official(self, sig, f, now) -> list[Message]:
@@ -755,6 +785,8 @@ class Engine:
         t = _now()
         self._restore_aviation(t)
         self._restore_vigilance(t)
+        self._restore_hyps(t)
+        self._restore_official(t)
         try:
             rows = self.store.signals_by_role("notam", t - dt.timedelta(days=21))
         except Exception:  # noqa: BLE001 - arhivă veche sau indisponibilă
@@ -940,21 +972,93 @@ class Engine:
             return self._tg_alert(sig, now)
         f = analyze(sig.text)
         if sig.role in ("ua_direction", "ua_official"):
-            return self._ua_direction(sig, f, now)
+            msgs = self._ua_direction(sig, f, now)
+            self._save_hyps(now)
+            return msgs
         if sig.role in ("md_official", "md_news"):
-            return self._moldova(sig, f, now)
+            msgs = self._moldova(sig, f, now)
+            self._save_hyps(now)
+            return msgs
         if sig.role in PUBLIC_SOURCE_ROLES:
-            return self._official(sig, f, now)
+            msgs = self._official(sig, f, now)
+            self._save_official(now)
+            return msgs
         return []
 
+    # ------------------------------------------------------------------ stare păstrată peste reporniri
+    def _save_hyps(self, now):
+        if not self.store:
+            return
+        hs = [{"id": h.id, "created": iso(h.created), "updated": iso(h.updated), "level": int(h.level),
+               "place": h.place.key if h.place else None, "origin": [o.key for o in h.origin], "jet": h.jet,
+               "official": h.official, "new_marker": h.from_new_marker, "notified": int(h.notified),
+               "last_msg_at": iso(h.last_msg_at) if h.last_msg_at else None, "last_msg_place": h.last_msg_place,
+               "last_msg_km": h.last_msg_km, "status_sent": sorted(h.status_sent)} for h in self.open_hyps()]
+        blob = json.dumps(hs, ensure_ascii=False, sort_keys=True)
+        if blob != getattr(self, "_hyps_saved", None):
+            self._hyps_saved = blob
+            self.store.kv_set("stare_ipoteze", blob)
+
+    def _restore_hyps(self, t):
+        try:
+            hs = json.loads(self.store.kv_get("stare_ipoteze", "") or "[]")
+        except ValueError:
+            return
+        ttl = dt.timedelta(minutes=self.cfg.ttl_min)
+        for d in hs if isinstance(hs, list) else []:
+            try:
+                upd = parse_iso(d["updated"])
+                if not upd or t - upd > ttl:
+                    continue
+                h = Hypothesis(id=int(d["id"]), created=parse_iso(d["created"]) or upd, updated=upd, level=Level(d["level"]),
+                               place=geo.BY_KEY.get(d.get("place")), jet=bool(d.get("jet")),
+                               official=bool(d.get("official")), from_new_marker=bool(d.get("new_marker")),
+                               notified=Level(d.get("notified", 0)), last_msg_at=parse_iso(d.get("last_msg_at")),
+                               last_msg_place=d.get("last_msg_place") or "", last_msg_km=d.get("last_msg_km"),
+                               status_sent=set(d.get("status_sent") or []))
+                h.origin = [geo.BY_KEY[k] for k in d.get("origin") or [] if k in geo.BY_KEY]
+            except (KeyError, TypeError, ValueError):
+                continue
+            self.hyps.append(h)
+            self._next_id = max(self._next_id, h.id + 1)
+
+    def _save_official(self, now):
+        if not self.store:
+            return
+        st = {k: {c: iso(v) for c, v in getattr(self, k).items()} for k in ("last_official", "alerted_at", "ended_at", "last_end")}
+        blob = json.dumps(st, ensure_ascii=False, sort_keys=True)
+        if blob != getattr(self, "_official_saved", None):
+            self._official_saved = blob
+            self.store.kv_set("stare_oficial", blob)
+
+    def _restore_official(self, t):
+        try:
+            st = json.loads(self.store.kv_get("stare_oficial", "") or "{}")
+        except ValueError:
+            return
+        for k in ("last_official", "alerted_at", "ended_at", "last_end"):
+            for c, v in (st.get(k) or {}).items():
+                ts = parse_iso(v)
+                if ts and t - ts <= dt.timedelta(hours=12):
+                    getattr(self, k)[c] = ts
+
     def tick(self, now: dt.datetime) -> list[Message]:
+        pend = []
+        for h in self.open_hyps():
+            if h.pending and (h.last_msg_at is None or now - h.last_msg_at >= dt.timedelta(minutes=10)):
+                kind, sig = h.pending
+                h.pending = None
+                pend += self._hyp_message(h, kind, sig, now)
+        if pend:
+            self._save_hyps(now)
         ttl = dt.timedelta(minutes=self.cfg.ttl_min)
         for h in self.open_hyps():
             if now - h.updated > ttl:
                 h.closed = True
                 self._event(h.level, h.id, "ipoteza_inchisa", f"fără semnale noi de {self.cfg.ttl_min:g} min", now)
         self.hyps = [h for h in self.hyps if not h.closed or now - h.updated < dt.timedelta(hours=6)]
-        return self._notam_expire(now) + self._notam_flush(now) + self._update_vigilance(now)
+        self._save_hyps(now)
+        return pend + self._notam_expire(now) + self._notam_flush(now) + self._update_vigilance(now)
 
     def status(self, now: dt.datetime) -> dict:
         lvl = max([h.level for h in self.open_hyps()] + [Level.VIGILENTA if self.vigilance_since else Level.FOND])
@@ -962,6 +1066,8 @@ class Engine:
         return {
             "nivel": LEVEL_RO[Level(lvl)],
             "vigilenta_din": hhmm(self.vigilance_since) if self.vigilance_since else None,
+            "vigilenta_se_incheie": (hhmm(self.vigilance_inactive_since + dt.timedelta(minutes=self.cfg.vigilance_end_min))
+                                     if self.vigilance_since and self.vigilance_inactive_since else None),
             "alerte_ua_active": sorted(self._active_titles(now)),
             "surse_stare_invechite": sorted(s for s, t in self.ua_state_alive.items() if now - t > stale),
             "ipoteze": [{"id": h.id, "nivel": LEVEL_RO[h.level], "oficial": h.official,

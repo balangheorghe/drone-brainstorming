@@ -159,7 +159,7 @@ public_enabled = false
 # Publicare automată: DOAR pentru RO-Alert-urile înregistrate de operator (/roalert). Presa cere mereu /aproba.
 auto_publish_official = false
 telegram_min_interval = 3.1   # secunde între mesaje (limita Telegram ~20/min într-un grup)
-dedup_min = 60                # un mesaj intern identic (fără oră) cu unul din ultimele 60 min nu se retrimite; 0 = oprit
+dedup_min = 10                # plasă de siguranță: un mesaj intern identic (fără oră) cu unul din ultimele 10 min nu se retrimite; 0 = oprit
 # La pornire, botul verifică că grupul intern e PRIVAT (nu canal, fără @nume public) și refuză altfel.
 allow_unverified_internal_chat = false
 # ntfy.sh fără token e public: refuzat, cu excepția cazului în care puneți true (nerecomandat).

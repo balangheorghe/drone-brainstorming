@@ -199,7 +199,7 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> tuple[
         public.append(TelegramSender(tok, cfg.secret("telegram_public_chat_id"), api, gap))
     return Dispatcher(store, internal, public, public_enabled=bool(cfg.get("notify", "public_enabled", default=False)),
                       auto_publish_official=bool(cfg.get("notify", "auto_publish_official", default=False)),
-                      dedup_min=num(cfg.get("notify", "dedup_min", default=60), "notify.dedup_min")), trusted
+                      dedup_min=num(cfg.get("notify", "dedup_min", default=10), "notify.dedup_min")), trusted
 
 
 class App:
@@ -214,6 +214,7 @@ class App:
         self.polled_ok: set[str] = set()
         self.down: set[str] = set()
         self.down_msg_at: dict[str, dt.datetime] = {}
+        self.down_since: dict[str, dt.datetime] = {}
         self.down_announced: set[str] = set()
         self.running: dict[str, Future] = {}
         self.started: dict[str, float] = {}
@@ -268,13 +269,19 @@ class App:
         return n
 
     def _source_down(self, c, err, t):
-        if c.name in self.down or self.errors[c.name] < DOWN_AFTER_ERRORS:
+        if self.errors[c.name] < DOWN_AFTER_ERRORS:
             return
-        self.down.add(c.name)
-        last = self.down_msg_at.get(c.name)
-        if last and t - last < dt.timedelta(hours=2):
-            log.warning("sursa %s din nou căzută (anunțată deja la %s; fără mesaj nou)", c.name, hhmm(last))
-            return  # sursă intermitentă: nu repetăm „căzută / a revenit” de mai multe ori pe oră
+        if c.name in self.down:
+            # o cădere neanunțată (sursă intermitentă) care durează: o anunțăm după 15 min
+            if c.name in self.down_announced or t - self.down_since.get(c.name, t) < dt.timedelta(minutes=15):
+                return
+        else:
+            self.down.add(c.name)
+            self.down_since[c.name] = t
+            last = self.down_msg_at.get(c.name)
+            if last and t - last < dt.timedelta(hours=2):
+                log.warning("sursa %s din nou căzută (anunțată deja la %s; mesaj doar dacă durează 15 min)", c.name, hhmm(last))
+                return  # sursă intermitentă: nu repetăm „căzută / a revenit” la fiecare pâlpâire
         self.down_msg_at[c.name] = t
         self.down_announced.add(c.name)
         self._submit([Message("internal", "sursa_cazuta",
@@ -428,7 +435,8 @@ class App:
     def status_text(self, t) -> str:
         st = self.status(t)
         bad = [s["sursa"] for s in st["surse"] if s["erori_consecutive"]]
-        lines = [f"Nivel: {st['nivel']} · ultimul ciclu {st['ultimul_ciclu']}",
+        lines = [f"Nivel: {st['nivel']}" + (f" (fără alerte; se încheie la {st['vigilenta_se_incheie']})"
+                                            if st.get("vigilenta_se_incheie") else "") + f" · ultimul ciclu {st['ultimul_ciclu']}",
                  f"Alerte UA urmărite: {', '.join(st['alerte_ua_active']) or 'niciuna'}",
                  f"Ipoteze: {len(st['ipoteze'])} · mesaje publice în așteptare: {st['in_asteptare']}",
                  f"Surse cu erori: {', '.join(bad) or 'niciuna'}"]

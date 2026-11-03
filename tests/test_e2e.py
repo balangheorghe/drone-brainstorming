@@ -677,3 +677,18 @@ def test_flapping_source_announced_once_per_two_hours(tmp_path, upstream, env):
                 app.down_announced.discard(c.name)
                 texts.append("revenit")
     assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 1 and texts.count("revenit") == 1
+
+
+def test_repeat_outage_after_flap_is_announced_if_it_lasts(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    c = app.collectors[0]
+    t = dt.datetime.now(UTC)
+    texts = []
+    app._submit = lambda msgs: texts.extend(x.text for x in msgs)
+    app.errors[c.name] = 3
+    app._source_down(c, OSError("jos"), t)                                  # anunțată
+    app.down.discard(c.name)
+    app.down_announced.discard(c.name)                                      # a revenit
+    for k in range(0, 40, 5):                                               # cade din nou și ține
+        app._source_down(c, OSError("jos"), t + dt.timedelta(minutes=30 + k))
+    assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 2

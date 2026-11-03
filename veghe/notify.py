@@ -72,16 +72,15 @@ def redact_military(text: str, kind: str = "", status: str = "sent") -> str:
     return MIL_NOTE_RX.sub(" [notă ADS-B militar nepăstrată].", text)
 
 
-# mesaje interne care nu trec prin filtrul de dubluri (au regulile lor)
-DEDUP_EXEMPT = {"pornire", "aprobare", "esec"}
+# mesaje interne care nu trec prin filtrul de dubluri: au regulile lor (ex. un RO-Alert nou după o încetare
+# are exact același text ca primul, dar e o alertă nouă)
+DEDUP_EXEMPT = {"pornire", "aprobare", "esec", "oficial_intern", "incetare_intern", "verificare"}
 _TIME_RX = re.compile(r"\b\d{1,2}:\d{2}(?:\s*EES?T)?\b")
-_HYP_RX = re.compile(r"\bH-\d+\b")
 
 
 def dedup_key(text: str) -> str:
-    """Textul fără ore și fără numărul ipotezei: două mesaje cu aceeași cheie spun același lucru."""
-    t = _HYP_RX.sub("H", _TIME_RX.sub("", text or ""))
-    return " ".join(t.split()).lower()
+    """Textul fără ore: două mesaje cu aceeași cheie spun același lucru (numărul ipotezei contează)."""
+    return " ".join(_TIME_RX.sub("", text or "").split()).lower()
 
 
 class ConsoleSender:
@@ -141,7 +140,7 @@ class NtfySender:
 
 class Dispatcher:
     def __init__(self, store, internal: list, public: list, *, public_enabled: bool = False,
-                 auto_publish_official: bool = False, max_attempts: int = MAX_ATTEMPTS, dedup_min: float = 60):
+                 auto_publish_official: bool = False, max_attempts: int = MAX_ATTEMPTS, dedup_min: float = 10):
         self.store = store
         self.senders = {"internal": internal, "public": public}
         self.public_enabled = public_enabled and bool(public)
@@ -157,8 +156,9 @@ class Dispatcher:
             if self.dedup and msg.kind not in DEDUP_EXEMPT:
                 key = dedup_key(msg.text)
                 for row in self.store.outbox_recent("internal", msg.kind, now() - self.dedup):
-                    if row["status"] in ("queued", "sent", "unknown") and dedup_key(row["text"]) == key:
-                        log.info("mesaj intern identic cu #%s din ultima oră: nu se retrimite", row["id"])
+                    live = row["status"] in ("sent", "unknown") or (row["status"] == "queued" and not row["attempts"])
+                    if live and dedup_key(row["text"]) == key:
+                        log.info("mesaj intern identic cu #%s de curând: nu se retrimite", row["id"])
                         return self.store.enqueue("internal", msg.kind, msg.text, "duplicat", msg.origin_role)
             return self.store.enqueue("internal", msg.kind, msg.text, "queued", msg.origin_role)
         if msg.channel != "public":
@@ -176,6 +176,16 @@ class Dispatcher:
                                f"(expiră în {PENDING_TTL.seconds // 60} min). Aprobați cu /aproba {oid} sau "
                                f"respingeți cu /respinge {oid}.\n—\n{msg.text}", "queued")
         return oid
+
+    def _revive_duplicates(self, row):
+        """Originalul n-a putut fi livrat: copiile oprite ca „duplicat” pleacă totuși (cea mai nouă)."""
+        if row["channel"] != "internal":
+            return
+        key = dedup_key(row["text"])
+        dups = [r for r in self.store.outbox_recent("internal", row["kind"], parse_iso(row["created_at"]))
+                if r["status"] == "duplicat" and r["id"] > row["id"] and dedup_key(r["text"]) == key]
+        if dups:
+            self.store.cas_outbox(dups[0]["id"], "duplicat", status="queued")
 
     def _redact(self, row, status: str = "sent"):
         red = redact_military(row["text"], row["kind"], status)
@@ -257,6 +267,7 @@ class Dispatcher:
                                        "queued")
                 elif attempts >= self.max_attempts:
                     self.store.set_outbox(row["id"], status="failed", **fields)
+                    self._revive_duplicates(row)
                     self._redact(row, "failed")
                     log.error("mesajul #%s nu a putut fi livrat: %s", row["id"], errors)
                     if row["channel"] == "public":
