@@ -110,3 +110,17 @@ def test_unknown_target_is_a_config_error():
     with pytest.raises(ConfigError):
         app._targets(["atlantida"])
     assert [p.key for p in app._targets(["Iași", "Suceava"])] == ["iasi", "suceava"]
+
+
+def test_notam_near_suceava_cancel_and_expiry_are_announced():
+    e = eng()
+    assert len(e.process(nsig(notam_meta()), T0)) == 1
+    cancel = notam_meta(id="F8110/26", key="LR:F8110/26", kind="anulare", ends="F8100/26", ends_key="LR:F8100/26",
+                        lat=None, lon=None, radius_nm=None)
+    msgs = e.process(nsig(cancel), T0 + dt.timedelta(minutes=5))
+    assert any("NOTAM ANULAT" in m.text and "F8100/26" in m.text for m in msgs)
+    # expirare
+    e2 = eng()
+    e2.process(nsig(notam_meta(end=iso(T0 + dt.timedelta(hours=1)))), T0)
+    out = [m for k in range(1, 4) for m in e2.tick(T0 + dt.timedelta(hours=k))]
+    assert any("F8100/26" in m.text for m in out)
