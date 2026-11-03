@@ -242,7 +242,7 @@ class Engine:
             # doar numere, fără poziții; marcajul permite înlocuirea notei în arhivă după livrare
             notes.append(f"ADS-B militar (NU REDISTRIBUIȚI): {self.military.get('numere')} (detalii în /stare).")
         closed = [m for m in self.notam_active.values()
-                  if m.get("category") in ("spatiu_aerian_inchis", "drone_uas") and (m.get("near") or m.get("fir") == "LUUU")
+                  if m.get("category") == "spatiu_aerian_inchis" and (m.get("near") or m.get("fir") == "LUUU")
                   and (now is None or not parse_iso(m.get("start")) or parse_iso(m.get("start")) <= now)]
         if closed:
             notes.append("NOTAM activ: " + "; ".join(f"{m.get('id')} {NOTAM_CAT_RO.get(m.get('category'), m.get('category'))}"
@@ -937,16 +937,22 @@ class Engine:
             self.notam_active[key] = m
         return ended
 
+    @staticmethod
+    def _notam_relevant(m: dict) -> bool:
+        """Doar ce poate însemna un incident: închiderea spațiului aerian lângă Iași/Prut, închiderea unui
+        aeroport urmărit sau orice restricție în spațiul aerian al R. Moldova (rare acolo, legate de incidente).
+        Zborurile planificate de drone, zonele restricționate de rutină (lunare, activări militare) și
+        avertizările GNSS rămân doar context (/stare), fără mesaje."""
+        cat, fir, locs = m.get("category"), m.get("fir"), set(m.get("locations") or [])
+        return bool((cat == "spatiu_aerian_inchis" and (m.get("near") or fir == "LUUU"))
+                    or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL"})
+                    or (cat == "restrictie_spatiu_aerian" and fir == "LUUU"))
+
     def _notam_eligible(self, m: dict, now: dt.datetime) -> str | None:
         """„acum”, „viitor” (va fi eligibil) sau None."""
         if m.get("kind") not in ("nou", "inlocuire") or m.get("_anuntat"):
             return None
-        cat, fir, locs = m.get("category"), m.get("fir"), set(m.get("locations") or [])
-        if not (m.get("near") or fir == "LUUU"):
-            return None
-        if not (cat in ("spatiu_aerian_inchis", "drone_uas", "gnss")
-                or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL"})
-                or (cat == "restrictie_spatiu_aerian" and (m.get("uas") or fir == "LUUU"))):
+        if not self._notam_relevant(m):
             return None
         start, end = parse_iso(m.get("start")), parse_iso(m.get("end"))
         if end and end <= now:
@@ -962,7 +968,7 @@ class Engine:
         kind = m.get("kind")
         ended = self._notam_apply(m)
         msgs = []
-        if kind in ("anulare", "retras") and ended and ended.get("_anuntat"):
+        if kind in ("anulare", "retras") and ended and ended.get("_anuntat") and self._notam_relevant(ended):
             how = ("anulat" if kind == "anulare" else
                    "nu mai apare în lista sursei înainte de expirare (anulat sau retras; de verificat)")
             msgs.append(Message("internal", "notam_sfarsit",
@@ -1013,7 +1019,7 @@ class Engine:
                 del self.notam_active[k]
                 changed = True
                 succ = m.get("_succesor") in self.notam_active
-                if announce and m.get("_anuntat") and not m.get("estimated") and not succ:
+                if announce and m.get("_anuntat") and not m.get("estimated") and not succ and self._notam_relevant(m):
                     msgs.append(Message("internal", "notam_sfarsit",
                                         f"[INTERN] NOTAM ÎNCHEIAT · {hhmm(now)} · {m.get('id')} "
                                         f"({NOTAM_CAT_RO.get(m.get('category'), m.get('category'))}) a expirat.", Level.FOND))

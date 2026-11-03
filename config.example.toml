@@ -257,9 +257,9 @@ turnback_min_deg = 150           # întoarcere: schimbare de direcție ≥ 150°
 drop_zero_polls = 3              # „0 avioane” confirmat în 3 citiri la rând
 
 # ---------------------------------------------------------------- NOTAM (restricții de spațiu aerian)
-# Context oficial pentru motor, nu alertă în sine: multe NOTAM-uri sunt activări militare de rutină.
-# Se anunță imediat doar: spațiu aerian închis, zboruri UAS/drone, interferențe GNSS, aeroport închis
-# (Iași/Chișinău/Bălți), restricții cu drone sau în R. Moldova – lângă Iași/Prut sau în FIR LUUU.
+# Context oficial, nu alertă în sine. Mesaj în grup DOAR pentru: spațiu aerian închis lângă Iași/Prut,
+# aeroport Iași/Chișinău/Bălți închis, restricții în spațiul aerian al R. Moldova. Restul (zboruri UAS
+# planificate, zone restricționate de rutină, avertizări GNSS) apare doar în /stare.
 [[sources.notam]]
 name = "romatsa"                 # FIR București (LRBB), inclusiv zonele restricționate de la granița cu MD/UA
 source = "romatsa_wfs"           # GeoServer public ROMATSA, fără cheie

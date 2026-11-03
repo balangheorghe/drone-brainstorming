@@ -32,17 +32,18 @@ def notam_wfs():
     """Un NOTAM ROMATSA real (F8021/26, zbor UAS lângă Prut), cu validitatea mutată în jurul orei curente."""
     now = dt.datetime.now(UTC).replace(second=0, microsecond=0)
     b, c = now - dt.timedelta(hours=1), now + dt.timedelta(hours=8)
-    mesaj = ("(F9021/26 NOTAMN\rQ) LRBB/QWULW/IV/BO /W /000/020/4629N02802E024\r"
-             f"A) LRBB B) {b:%y%m%d%H%M} C) {c:%y%m%d%H%M}\rE) NAVIGATION WARNING.\r"
-             "   UNMANNED ACFT FLT WILL TAKE PLACE INTO THE FLW AREA:\r"
-             "   460705N0275910E-460630N0280656E-462535N0281533E-463840N0281446E\r"
-             "   464732N0280949E-465039N0280627E-465145N0275759E-462845N0280343E\r"
-             "   460705N0275910E\r   EXCEPT CHISINAU FIR\rF) GND G) 2000FT AMSL)\r")
     ring = [[27.986112, 46.118056], [28.2575, 46.43], [28.24, 46.85], [27.96, 46.86], [27.986112, 46.118056]]
-    return {"type": "FeatureCollection", "totalFeatures": 1, "numberMatched": 1, "numberReturned": 1, "features": [
-        {"type": "Feature", "id": "restrictii_notam_pt_uav.1", "geometry": {"type": "Polygon", "coordinates": [ring]},
-         "geometry_name": "the_geom", "properties": {"serie": "F9021/2026", "dfrom": b.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                                     "dto": c.strftime("%Y-%m-%dT%H:%M:%SZ"), "mesaj": mesaj, "tip": "O"}}]}
+
+    def feat(serie, q, text, tip):
+        mesaj = (f"({serie[:-5]}/26 NOTAMN\rQ) LRBB/{q}/IV/BO /W /000/020/4629N02802E024\r"
+                 f"A) LRBB B) {b:%y%m%d%H%M} C) {c:%y%m%d%H%M}\rE) {text}\rF) GND G) 2000FT AMSL)\r")
+        return {"type": "Feature", "id": f"restrictii_notam_pt_uav.{serie[1:5]}", "geometry": {"type": "Polygon", "coordinates": [ring]},
+                "geometry_name": "the_geom", "properties": {"serie": serie, "dfrom": b.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                            "dto": c.strftime("%Y-%m-%dT%H:%M:%SZ"), "mesaj": mesaj, "tip": tip}}
+
+    feats = [feat("F9021/2026", "QWULW", "NAVIGATION WARNING. UNMANNED ACFT FLT WILL TAKE PLACE INTO THE FLW AREA", "O"),
+             feat("F9022/2026", "QRTCA", "AIRSPACE CLOSED FOR ALL FLIGHTS DUE TO UNIDENTIFIED AERIAL OBJECTS", "R")]
+    return {"type": "FeatureCollection", "totalFeatures": 2, "numberMatched": 2, "numberReturned": 2, "features": feats}
 
 
 class Upstream:
@@ -538,7 +539,8 @@ def test_notam_and_military_reach_internal_group_only(tmp_path, upstream, env):
     assert "notam:romatsa" in [c.name for c in app.collectors]
     cycle(app)
     internal = [m["text"] for m in upstream.sent if m["chat_id"] == "-1001"]
-    assert any(t.startswith("[INTERN] NOTAM") and "F9021/26" in t for t in internal)
+    assert any(t.startswith("[INTERN] NOTAM") and "F9022/26" in t for t in internal)       # închiderea: anunțată
+    assert not any("F9021/26" in t for t in internal)                                         # zboruri UAS planificate: nu
     mil = [t for t in internal if "ADS-B MILITAR" in t]
     assert len(mil) == 1 and "avion de luptă" in mil[0] and "SECRET1" not in mil[0] and "4b1234" not in mil[0]
     public = [m for m in upstream.sent if m["chat_id"] == "-2002"]
@@ -546,7 +548,7 @@ def test_notam_and_military_reach_internal_group_only(tmp_path, upstream, env):
     # instantaneele ADS-B (civile și militare) nu se arhivează ca semnale; NOTAM-ul da
     roles = {r["role"] for r in app.store.recent_signals(200)}
     assert "notam" in roles and "adsb" not in roles and "adsb_militar" not in roles
-    assert "NOTAM active: 1" in app.status_text(dt.datetime.now(UTC))
+    assert "NOTAM active: 2" in app.status_text(dt.datetime.now(UTC))
     assert app.store.adsb_samples("LUKK", dt.datetime.now(UTC) - dt.timedelta(hours=1))
 
 

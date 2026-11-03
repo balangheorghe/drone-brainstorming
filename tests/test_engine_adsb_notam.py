@@ -198,8 +198,8 @@ def test_military_note_has_no_positions_and_expires():
 
 # ------------------------------------------------------------------ NOTAM
 def notam_meta(**kw):
-    m = {"id": "F8021/26", "key": "LR:F8021/26", "kind": "nou", "replaces": None, "fir": "LRBB", "qcode": "QWULW",
-         "category": "drone_uas", "uas": True, "near": True, "locations": ["LRBB"],
+    m = {"id": "F8021/26", "key": "LR:F8021/26", "kind": "nou", "replaces": None, "fir": "LRBB", "qcode": "QRTCA",
+         "category": "spatiu_aerian_inchis", "uas": False, "near": True, "locations": ["LRBB"],
          "start": iso(T0 - dt.timedelta(hours=1)), "end": iso(T0 + dt.timedelta(hours=8)), "estimated": False,
          "dist_iasi_km": 42.8, "dist_prut_km": 0.0, "ends": None, "ends_key": None, "continua": None}
     m.update(kw)
@@ -208,17 +208,34 @@ def notam_meta(**kw):
 
 def nsig(meta, t=T0, text=None):
     return Signal(source="notam:romatsa", role="notam", received_at=t, published_at=t, ext_id=f"{meta['key']}|{meta['kind']}",
-                  text=text or f"NOTAM {meta['id']} · zboruri UAS / drone ({meta.get('qcode')}) · LRBB", meta=meta)
+                  text=text or f"NOTAM {meta['id']} · spațiu aerian închis ({meta.get('qcode')}) · LRBB", meta=meta)
 
 
-def test_notam_near_uas_announced_far_routine_archived():
+def test_notam_near_closure_announced_routine_ones_only_in_status():
     e = eng()
     msgs = e.process(nsig(notam_meta()), T0)
     assert len(msgs) == 1 and msgs[0].text.startswith("[INTERN] NOTAM") and "F8021/26" in msgs[0].text
     assert "nu confirmă o dronă" in msgs[0].text
-    far = notam_meta(id="P1/26", key="LR:P1/26", near=False, category="restrictie_spatiu_aerian", uas=False, qcode="QRTCA")
-    assert e.process(nsig(far), T0 + dt.timedelta(minutes=20)) == []
-    assert {n["id"] for n in e.status(T0)["notam_active"]} == {"F8021/26", "P1/26"}
+    routine = [
+        notam_meta(id="F9001/26", key="LR:F9001/26", category="drone_uas", uas=True, qcode="QWULW"),       # zboruri UAS planificate
+        notam_meta(id="P2397/26", key="LR:P2397/26", category="restrictie_spatiu_aerian", qcode="QRDCA"),  # activare militară
+        notam_meta(id="P2578/26", key="LR:P2578/26", category="restrictie_spatiu_aerian", uas=True, qcode="QRTCA",
+                   near=False, end=iso(T0 + dt.timedelta(days=28))),                                       # zona lunară de la graniță
+        notam_meta(id="G1/26", key="LR:G1/26", category="gnss", qcode="QGWXX"),                            # avertizare GNSS
+    ]
+    sent = []
+    for k, r in enumerate(routine):
+        sent += e.process(nsig(r), T0 + dt.timedelta(minutes=20 + k))
+    assert {"F9001/26", "P2397/26", "G1/26"} <= {n["id"] for n in e.status(T0)["notam_active"]}   # vizibile în /stare
+    sent += [x for k in range(1, 60) for x in e.tick(T0 + dt.timedelta(hours=k))]
+    assert not [x for x in sent if "F9001" in x.text or "P2397" in x.text or "P2578" in x.text or "G1/26" in x.text]
+
+
+def test_notam_moldova_restriction_is_announced():
+    e = eng()
+    md = notam_meta(id="A0200/26", key="LU:A0200/26", fir="LUUU", category="restrictie_spatiu_aerian", near=False,
+                    qcode="QRTCA", locations=["LUUU"])
+    assert len(e.process(nsig(md), T0)) == 1
 
 
 def test_notam_moldova_closure_is_attention_and_merged_within_10_min():
