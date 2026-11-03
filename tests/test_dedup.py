@@ -44,7 +44,10 @@ def test_flickering_alert_gives_one_vigilance_per_episode():
 def test_vigilance_update_only_when_alert_moves_much_closer():
     e = eng()
     assert len(state(e, m(0), "Подільський район")) == 1                         # ~159 km de Iași
-    assert state(e, m(25), "Подільський район", "Ізмаїльський район") == []       # Izmail e mai departe (~222 km)
+    assert state(e, m(10), "Подільський район") == []
+    msgs = state(e, m(25), "Подільський район", "Ізмаїльський район")              # Izmail: altă direcție (Dunărea)
+    assert len(msgs) == 1 and "direcție nouă" in msgs[0].text
+    assert state(e, m(50), "Подільський район", "Ізмаїльський район") == []
     e2 = eng()
     assert len(state(e2, m(0), "Ізмаїльський район")) == 1
     msgs = state(e2, m(30), "Ізмаїльський район", "Подільський район")            # Podilsk: mult mai aproape
@@ -193,3 +196,71 @@ def test_long_vigilance_survives_restart(tmp_path):
     now2 = t + dt.timedelta(minutes=76)
     assert e2.tick(now2) == []
     assert state(e2, now2 + dt.timedelta(minutes=1), "Ізмаїльський район") == []
+
+
+
+# ------------------------------------------------------------------ a doua verificare (fără pierderi)
+def test_return_toward_iasi_after_retreat_is_reported():
+    e = eng()
+    assert md(e, m(0), "Dronă la Sculeni, spre vest") != []
+    assert md(e, m(20), "O dronă a fost semnalată în raionul Cahul") != []          # mesaj vechi + alt loc
+    sent = md(e, m(26), "Drona a fost observată la Hîncești") + md(e, m(31), "Drona survolează Nisporeni")
+    sent += md(e, m(34), "Drona este deasupra orașului Ungheni")
+    for k in range(35, 80):
+        sent += e.tick(m(k))
+    assert any("Ungheni" in x.text for x in sent)
+
+
+def test_deferred_position_survives_lagging_repost():
+    e = eng()
+    assert md(e, m(0), "Dronă semnalată în R. Moldova la Tiraspol") != []
+    assert md(e, m(5), "Drona survolează municipiul Chișinău") == []                # amânată (prea curând)
+    md(e, m(7), "Dronă semnalată în R. Moldova la Tiraspol")                         # repostare întârziată
+    sent = [x for k in range(8, 20) for x in e.tick(m(k))]
+    assert any("Chișinău" in x.text for x in sent)
+
+
+def test_left_toward_romania_is_separate_from_lost_from_radar():
+    e = eng()
+    md(e, m(0), "Dronă la Nisporeni, spre vest")
+    assert md(e, m(8), "Drona a dispărut de pe radar în raionul Ungheni") != []
+    assert md(e, m(13), "Drona a părăsit spațiul aerian al R. Moldova prin zona Sculeni, spre România") != []
+
+
+def test_definite_new_drones_always_open_new_hypothesis():
+    e = eng()
+    md(e, m(0), "Dronă semnalată în R. Moldova la Edineț, spre vest")
+    md(e, m(2), "A doua dronă la Ocnița")                                             # H-2
+    msgs = md(e, m(4), "A treia dronă a intrat prin Ocnița")
+    assert len(msgs) == 1 and "H-3" in msgs[0].text
+    for text in ("Un nou incident cu o dronă în raionul Edineț", "O nouă alertă de dronă la Edineț",
+                 "Un nou update: drona de la Edineț"):
+        e2 = eng()
+        md(e2, m(0), "Dronă semnalată în R. Moldova la Edineț, spre vest")
+        assert md(e2, m(3), text) == [], text                                         # aceeași dronă, nu una nouă
+
+
+def test_vigilance_new_axis_and_channel_state_after_restart(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    tg = Signal(source="telegram:air_alert_ua", role="ua_alerts", received_at=t, published_at=t,
+                text="🔴 Повітряна тривога в Подільський район")
+    assert any(x.kind == "vigilenta" for x in e.process(tg, t))
+    e2 = eng(st)                                                                       # doar canalul, fără API
+    for k in range(1, 50, 5):
+        assert e2.tick(t + dt.timedelta(minutes=k)) == []
+    assert e2.vigilance_since is not None
+
+
+def test_repeat_end_without_new_alert_is_internal_only():
+    e = eng()
+    def ro(text, k, url):
+        return e.process(Signal(source="rss:ro", role="ro_official_news", text=text, received_at=m(k), published_at=m(k), url=url), m(k))
+    ro("RO-Alert în județul Iași: posibilă incursiune de drone", 0, "https://a.ro/1")
+    first = ro("Alerta aeriană din județul Iași a încetat", 40, "https://a.ro/2")
+    assert {x.channel for x in first} == {"internal", "public"}
+    again = ro("Alerta a încetat în județul Iași, recapitulare", 105, "https://a.ro/3")
+    assert [x.channel for x in again] == ["internal"] and "din nou relatată" in again[0].text

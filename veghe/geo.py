@@ -40,6 +40,7 @@ GAZETTEER: list[Place] = [
     _p("odesa", "Odesa", "UA", 46.482, 30.723, ["одес", "одещин", "odes"], ODESA),
     _p("izmail", "Izmail", "UA", 45.351, 28.837, ["ізмаї", "измаил", "izmail", "ismail"], ODESA),
     _p("reni", "Reni", "UA", 45.456, 28.283, ["re:рен[іи]\\b", "re:reni\\b"], ODESA),
+    _p("kiliia", "Kiliia", "UA", 45.453, 29.264, ["кілі", "килия", "kiliia", "kilia"], ODESA),
     _p("vylkove", "Vîlcov", "UA", 45.402, 29.584, ["вилков", "vylkov", "vilkov", "vâlcov", "valcov"], ODESA),
     _p("bilhorod", "Bilhorod-Dnistrovskyi", "UA", 46.186, 30.344,
        ["білгород-дністров", "белгород-днестров", "bilhorod", "cetatea alba"], ODESA),
@@ -57,7 +58,7 @@ GAZETTEER: list[Place] = [
     # --- R. Moldova ---
     _p("chisinau", "Chișinău", "MD", 47.011, 28.861, ["chisinau", "кишин"]),
     _p("balti", "Bălți", "MD", 47.762, 27.929, ["re:balti(?:ul|ului)?\\b", "бельц", "бєльц"]),
-    _p("soroca", "Soroca", "MD", 48.156, 28.297, ["soroca", "сороцьк", "сорокск"]),
+    _p("soroca", "Soroca", "MD", 48.156, 28.297, ["soroca", "сороцьк", "сорокск", "re:сорок(?:и|ах|ам)(?!\\w)"]),
     _p("otaci", "Otaci", "MD", 48.43, 27.79, ["otaci", "отач"]),
     _p("ocnita", "Ocnița", "MD", 48.385, 27.437, ["ocnit", "окниц"]),
     _p("edinet", "Edineț", "MD", 48.168, 27.305, ["edinet", "единц"]),

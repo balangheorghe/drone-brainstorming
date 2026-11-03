@@ -692,3 +692,17 @@ def test_repeat_outage_after_flap_is_announced_if_it_lasts(tmp_path, upstream, e
     for k in range(0, 40, 5):                                               # cade din nou și ține
         app._source_down(c, OSError("jos"), t + dt.timedelta(minutes=30 + k))
     assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 2
+
+
+def test_source_down_state_survives_restart(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    c = app.collectors[0]
+    texts = []
+    app._submit = lambda msgs: texts.extend(x.text for x in msgs)
+    app.errors[c.name] = 3
+    app._source_down(c, OSError("jos"), dt.datetime.now(UTC))
+    app2 = App(load(str(write_config(tmp_path, upstream.base))), store=app.store)
+    app2._submit = lambda msgs: texts.extend(x.text for x in msgs)
+    app2.errors[c.name] = 3
+    app2._source_down(c, OSError("jos"), dt.datetime.now(UTC) + dt.timedelta(minutes=10))
+    assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 1 and c.name in app2.down_announced

@@ -216,6 +216,7 @@ class App:
         self.down_msg_at: dict[str, dt.datetime] = {}
         self.down_since: dict[str, dt.datetime] = {}
         self.down_announced: set[str] = set()
+        self._restore_down()
         self.running: dict[str, Future] = {}
         self.started: dict[str, float] = {}
         self.stuck: set[str] = set()
@@ -268,6 +269,32 @@ class App:
                 n += len(msgs)
         return n
 
+    def _save_down(self):
+        st = {n: {"msg_at": iso(self.down_msg_at[n]) if n in self.down_msg_at else None,
+                  "since": iso(self.down_since[n]) if n in self.down_since else None,
+                  "announced": n in self.down_announced} for n in set(self.down_msg_at) | self.down}
+        self.store.kv_set("stare_surse", json.dumps(st))
+
+    def _restore_down(self):
+        """După repornire: o sursă anunțată căzută rămâne „căzută” (fără un nou anunț; „a revenit” la revenire)."""
+        from .timeutil import parse_iso
+
+        try:
+            st = json.loads(self.store.kv_get("stare_surse", "") or "{}")
+        except ValueError:
+            return
+        t = now()
+        for n, d in st.items() if isinstance(st, dict) else []:
+            if n not in self.errors or not isinstance(d, dict):
+                continue
+            at = parse_iso(d.get("msg_at"))
+            if at and t - at < dt.timedelta(hours=2):
+                self.down_msg_at[n] = at
+            if d.get("announced"):
+                self.down.add(n)
+                self.down_announced.add(n)
+                self.down_since[n] = parse_iso(d.get("since")) or t
+
     def _source_down(self, c, err, t):
         if self.errors[c.name] < DOWN_AFTER_ERRORS:
             return
@@ -284,6 +311,7 @@ class App:
                 return  # sursă intermitentă: nu repetăm „căzută / a revenit” la fiecare pâlpâire
         self.down_msg_at[c.name] = t
         self.down_announced.add(c.name)
+        self._save_down()
         self._submit([Message("internal", "sursa_cazuta",
                               f"[INTERN] SURSĂ CĂZUTĂ · {hhmm(t)}. {c.name} nu răspunde ({type(err).__name__}, "
                               f"{self.errors[c.name]} erori la rând). Avertizarea pe această cale e oarbă până revine.")])
@@ -323,6 +351,7 @@ class App:
                     self.down.discard(name)
                     if name in self.down_announced:
                         self.down_announced.discard(name)
+                        self._save_down()
                         self._submit([Message("internal", "sursa_revenita", f"[INTERN] Sursa {name} a revenit · {hhmm(t)}.")])
             else:
                 self.errors[name] += 1
@@ -435,9 +464,10 @@ class App:
     def status_text(self, t) -> str:
         st = self.status(t)
         bad = [s["sursa"] for s in st["surse"] if s["erori_consecutive"]]
-        lines = [f"Nivel: {st['nivel']}" + (f" (fără alerte; se încheie la {st['vigilenta_se_incheie']})"
-                                            if st.get("vigilenta_se_incheie") else "") + f" · ultimul ciclu {st['ultimul_ciclu']}",
-                 f"Alerte UA urmărite: {', '.join(st['alerte_ua_active']) or 'niciuna'}",
+        lines = [f"Nivel: {st['nivel']} · ultimul ciclu {st['ultimul_ciclu'] or 'încă niciunul'}",
+                 f"Alerte UA urmărite: {', '.join(st['alerte_ua_active']) or 'niciuna'}"
+                 + (f" (episodul VIGILENȚĂ se încheie la {st['vigilenta_se_incheie']} dacă nu reapar)"
+                    if st.get("vigilenta_se_incheie") and st['ultimul_ciclu'] else ""),
                  f"Ipoteze: {len(st['ipoteze'])} · mesaje publice în așteptare: {st['in_asteptare']}",
                  f"Surse cu erori: {', '.join(bad) or 'niciuna'}"]
         if st["livrari_interne_esuate_24h"]:

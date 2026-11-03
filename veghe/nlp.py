@@ -61,7 +61,8 @@ LOST = _rx([r"a disparut de pe radar", r"disparut de pe sistemele", r"a parasit 
 ROALERT = _rx([r"ro-alert", r"ro alert", r"roalert", r"alerta extrema", r"alerta aeriana"])
 END = _rx([r"incetare\w* (?:a )?(?:starii de )?alert", r"alerta (?:aeriana )?a incetat", r"a incetat (?:starea de )?alert",
            r"alerta (?:aeriana )?(?:a fost )?(?:ridicata|incheiata)", r"starea de alerta aeriana .{0,30}(?:a fost ridicata|a incetat)",
-           r"s-a incheiat alerta", r"alert(?:a|ei) (?:aeriana )?(?:s-a )?(?:incheiat|terminat)"])
+           r"s-a incheiat alerta", r"alert(?:a|ei) (?:aeriana )?(?:s-a )?(?:incheiat|terminat)",
+           r"alerta (?:aeriana |ro-alert )?(?:din|pentru|in) [^.]{0,40}?(?<!nu )(?:a incetat|a fost ridicata|s-a incheiat)"])
 MOLDOVA = _rx([r"молдов", r"moldov", r"r\. moldova", r"republica moldova", r"придністров", r"приднестров", r"transnistr"])
 ROMANIA = _rx([r"румун", r"румын", r"romani"])
 DIRECTION = re.compile(
