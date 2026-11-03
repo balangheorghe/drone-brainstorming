@@ -706,3 +706,20 @@ def test_source_down_state_survives_restart(tmp_path, upstream, env):
     app2.errors[c.name] = 3
     app2._source_down(c, OSError("jos"), dt.datetime.now(UTC) + dt.timedelta(minutes=10))
     assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 1 and c.name in app2.down_announced
+
+
+def test_probation_source_is_silent_until_it_works_once(tmp_path, upstream, env):
+    extra = '\n[[sources.telegram]]\nchannel = "inexistent"\nrole = "md_news"\nbase_url = "' + upstream.base + '/tme/"\nprobation = true\n'
+    app = App(load(str(write_config(tmp_path, upstream.base, extra))))
+    c = next(x for x in app.collectors if x.name == "telegram:inexistent")
+    assert c.probation
+    texts = []
+    app._submit = lambda msgs: texts.extend(x.text for x in msgs)
+    t = dt.datetime.now(UTC)
+    app.errors[c.name] = 5
+    app._source_down(c, OSError("404"), t)
+    assert not texts and c.name in app.down                                # nouă, neconfirmată: fără alarmă
+    app.down.discard(c.name)
+    app.polled_ok.add(c.name)                                              # a mers o dată
+    app._source_down(c, OSError("jos"), t + dt.timedelta(minutes=5))
+    assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 1                   # de acum, ca orice sursă

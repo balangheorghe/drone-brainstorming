@@ -70,6 +70,7 @@ def build_collectors(cfg: Config) -> list[C.Collector]:
             raise ConfigError(f"telegram:{t.get('channel')}: rol nepermis „{role}” (permise: {sorted(TELEGRAM_ROLES)})")
         out.append(C.TelegramWeb(t["channel"], role, t.get("base_url", "https://t.me/s/"),
                                  interval=max(30, num(t.get("interval", 60), "telegram.interval")), **kw))
+        out[-1].probation = bool(t.get("probation", False))
     for r in s.get("rss", []) or []:
         if not r.get("enabled", True):
             continue
@@ -78,6 +79,7 @@ def build_collectors(cfg: Config) -> list[C.Collector]:
             raise ConfigError(f"rss:{r.get('name')}: rol nepermis „{role}” (permise: {sorted(RSS_ROLES)})")
         out.append(C.Feed(r["name"], r["url"], role, r.get("keywords"),
                           interval=max(60, num(r.get("interval", 120), "rss.interval")), **kw))
+        out[-1].probation = bool(r.get("probation", False))
     ad = s.get("adsb", {})
     if ad.get("enabled"):
         mil = ad.get("military")
@@ -297,6 +299,12 @@ class App:
 
     def _source_down(self, c, err, t):
         if self.errors[c.name] < DOWN_AFTER_ERRORS:
+            return
+        if getattr(c, "probation", False) and c.name not in self.polled_ok:
+            # sursă nouă, încă neconfirmată: nu alarmăm grupul (check-sources o arată cu ✗)
+            if c.name not in self.down:
+                self.down.add(c.name)
+                log.warning("sursa nouă %s nu răspunde (%s); verificați-o cu check-sources", c.name, type(err).__name__)
             return
         if c.name in self.down:
             # o cădere neanunțată (sursă intermitentă) care durează: o anunțăm după 15 min

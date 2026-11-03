@@ -4,7 +4,7 @@
 
 ## Ce face serviciul `veghe`
 
-- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, administrațiile Odesa, Cernăuți, Izmail), presa și Moldpres (RSS, Google News), trafic aerian din ADS-B (adsb.lol, cu rezervă airplanes.live, opțional receptor propriu) și NOTAM-uri (ROMATSA; opțional FAA pentru R. Moldova).
+- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, administrațiile Odesa, Cernăuți, Izmail, Vinnîțea, Mohyliv, Bolhrad, forțele „Sud”, grănicerii UA, canale OSINT de monitorizare a dronelor, Armata Națională și Poliția de Frontieră a R. Moldova, Guvernul R. Moldova, presa din R. Moldova), presa și Moldpres (RSS, Google News), trafic aerian din ADS-B (adsb.lol, cu rezervă airplanes.live, opțional receptor propriu) și NOTAM-uri (ROMATSA; opțional FAA pentru R. Moldova).
 - **Arhivează** fiecare mesaj în SQLite, cu ora de publicare și ora la care l-a primit (pentru măsurarea avansului real).
 - **Aplică regulile** din [07](07-arhitectura-sistem.md): VIGILENȚĂ → DIRECȚIE → MOLDOVA → APROPIERE → OFICIAL, cu ETA în intervalul 450/150 km/h.
 - **Trimite mesaje INTERNE** într-un grup Telegram privat (și opțional ntfy). La fiecare pornire trimite „veghe pornit”, ca să știți că livrarea merge.
@@ -46,7 +46,7 @@ Exemplu: `docker compose run --rm veghe report --since 2026-11-01T14:00:00Z`.
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
 | **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
 | **Verificarea dinaintea unirii în `master`** (instalare pas cu pas cu Docker și cu systemd, revizuirea ultimelor modificări, documentație vs. cod; fiecare constatare reverificată independent) | prima trecere: 32 de constatări confirmate, unele găsite de mai mulți verificatori (ex. ID de grup greșit = alerte pierdute fără avertizare, port ocupat = serviciu oprit, depozit privat, comenzi care nu mergeau pe serverul cu Docker); a doua trecere, pe corecturi: 12 constatări (ex. portul 8080 ocupat oprea containerul, `data/` fără drept de scriere nedetectat) – **toate corectate**, cu teste | |
-| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (401 de teste în total, pe Python 3.11–3.13) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (402 teste în total, pe Python 3.11–3.13) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, mesajul de test și cel de pornire, erorile Telegram explicate (token/ID greșit, bot scos), refuzul comenzilor neautorizate, modul fără operatori, `check-sources`, pagina de stare |
 | **Imaginea Docker** | construită și pornită | `docker compose build` reușește; `check-sources` rulează în container (inclusiv mesajul de test către un Telegram simulat și verificarea `data/`); healthcheck „healthy”; `/health` și `/status` răspund; „veghe pornit” la pornire; port ocupat → `VEGHE_HOST_PORT`; oprire curată la `docker compose stop`; baza de date se creează în `data/` cu drepturi doar pentru serviciu |
@@ -149,7 +149,7 @@ Verificări ulterioare: în grup apare „veghe pornit” la fiecare repornire. 
 - `alerts_in_ua` cu 401/403 → token greșit sau încă neaprobat;
 - `adsb` cu 4xx → adsb.lol a introdus cheie (vezi adsb.lol/feed); folosiți airplanes.live sau un receptor propriu.
 
-O sursă se scoate ștergând (sau comentând) blocul ei din `config.toml`, ori cu `enabled = false` în bloc.
+O sursă se scoate ștergând (sau comentând) blocul ei din `config.toml`, ori cu `enabled = false` în bloc. Cele 20 de canale adăugate din catalog au `probation = true`: cât timp n-au răspuns niciodată, nu trimit „SURSĂ CĂZUTĂ” în grup (unele nume de canal nu au putut fi confirmate); `check-sources` le arată cu ✗ și o notă – ștergeți-le blocul.
 
 ## Deploy: alternativa fără Docker (systemd)
 

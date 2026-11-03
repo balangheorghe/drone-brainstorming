@@ -71,6 +71,133 @@ channel = "IzmailRDA"           # Raionul Izmail (de verificat cu check-sources)
 role = "ua_official"
 interval = 120
 
+# --- canale suplimentare din catalogul docs/14 (publice, citite prin previzualizarea t.me/s) ---
+# probation = true: un canal nou care nu răspunde NU trimite „SURSĂ CĂZUTĂ” până nu a mers măcar o dată;
+# rulați check-sources și ștergeți blocurile cu ✗ (unele nume de canal nu au putut fi confirmate din catalog).
+# Monitorizare OSINT a dronelor/rachetelor (UA) – doar intern, nu se republică
+[[sources.telegram]]
+channel = "deraketaua"          # „Де Ракета” – rachete/Shahed în timp real
+role = "ua_direction"
+interval = 60
+probation = true
+
+[[sources.telegram]]
+channel = "war_monitor"         # „monitor” – poziția/direcția dronelor (sursa hărții war-monitor)
+role = "ua_direction"
+interval = 60
+probation = true
+
+[[sources.telegram]]
+channel = "eRadarrua"           # „єРадар”
+role = "ua_direction"
+interval = 60
+probation = true
+
+# Administrații și forțe ucrainene din vecinătate (context oficial) – doar intern
+[[sources.telegram]]
+channel = "vinnytskaODA"        # Administrația militară Vinnîțea (Mohyliv-Podilskyi e în nordul R. Moldova)
+role = "ua_official"
+interval = 120
+probation = true
+
+[[sources.telegram]]
+channel = "SJTF_Odes"           # Forțele de apărare „Sud” (Odesa)
+role = "ua_official"
+interval = 120
+probation = true
+
+[[sources.telegram]]
+channel = "DPSUkr"              # Serviciul de grăniceri al Ucrainei
+role = "ua_official"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "mog_pod_mr"          # Primăria Mohyliv-Podilskyi (vizavi de Otaci)
+role = "ua_official"
+interval = 120
+probation = true
+
+[[sources.telegram]]
+channel = "bolgradrda_news"     # Raionul Bolhrad (sudul Basarabiei)
+role = "ua_official"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "suspilneodesa"       # Suspilne Odesa (televiziunea publică)
+role = "ua_official"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "suspilne_chernivtsi" # Suspilne Cernăuți
+role = "ua_official"
+interval = 180
+probation = true
+
+# R. Moldova – surse oficiale (detecții, trasee de drone prin raioane)
+[[sources.telegram]]
+channel = "MDNationalArmy"      # Armata Națională / MApărării
+role = "md_official"
+interval = 90
+probation = true
+
+[[sources.telegram]]
+channel = "politiadefrontiera"  # Poliția de Frontieră (drone care traversează frontiera)
+role = "md_official"
+interval = 90
+probation = true
+
+[[sources.telegram]]
+channel = "prima_sursa_md"      # „Prima Sursă” – canalul Guvernului
+role = "md_official"
+interval = 120
+probation = true
+
+# R. Moldova – presă cu canale Telegram
+[[sources.telegram]]
+channel = "newsmakerlive"       # NewsMaker
+role = "md_news"
+interval = 120
+probation = true
+
+[[sources.telegram]]
+channel = "tv8md"               # TV8
+role = "md_news"
+interval = 120
+probation = true
+
+[[sources.telegram]]
+channel = "PointNews"           # Point.md
+role = "md_news"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "realitateamd"        # Realitatea.md
+role = "md_news"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "jurnal_tv"           # Jurnal TV
+role = "md_news"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "expresul"            # Expresul (Ungheni, vizavi de Iași)
+role = "md_news"
+interval = 180
+probation = true
+
+[[sources.telegram]]
+channel = "balti_online"        # Bălți
+role = "md_news"
+interval = 180
+probation = true
+
 # Fluxuri RSS / Atom. keywords = filtru opțional (se păstrează doar itemii care conțin unul).
 [[sources.rss]]
 name = "moldpres"

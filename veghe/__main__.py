@@ -50,6 +50,8 @@ def cmd_check_sources(args):
             sigs = c.poll(t)
         except Exception as e:  # noqa: BLE001
             print(f"✗ {c.name:28s} EROARE {type(e).__name__}: {e}")
+            if getattr(c, "probation", False):
+                print("      (sursă nouă, neconfirmată: dacă rămâne ✗, ștergeți blocul ei din config.toml)")
             continue
         ok += 1
         newest = max((s.published_at for s in sigs if s.published_at), default=None)
