@@ -123,6 +123,12 @@ IASI = BY_KEY["iasi"]
 LRIA = Place("lria", "Aeroportul Iași (LRIA)", "RO", 47.178, 27.621)
 LUKK = Place("lukk", "Aeroportul Chișinău (LUKK)", "MD", 46.928, 28.931)
 LRSV = Place("lrsv", "Aeroportul Suceava (LRSV)", "RO", 47.688, 26.354)
+LRBC = Place("lrbc", "Aeroportul Bacău (LRBC)", "RO", 46.522, 26.910)
+# Ținte cu alt nume afișat decât în dicționar („neamt” e județul; ținta e municipiul Piatra Neamț)
+PIATRA_NEAMT = Place("piatra_neamt", "Piatra Neamț", "RO", 46.927, 26.370)
+TARGET_KEYS: dict[str, Place] = {"piatra_neamt": PIATRA_NEAMT, "neamt": PIATRA_NEAMT}
+# Nord-Estul (cele 6 reședințe de județ); prima e ținta principală
+NE_TARGETS = ["iasi", "suceava", "botosani", "piatra_neamt", "bacau", "vaslui"]
 
 # Linia Prutului (aproximativă, nord → sud)
 PRUT_LINE: list[tuple[float, float]] = [

@@ -1039,7 +1039,7 @@ class NotamCollector(Collector):
     MIN_INTERVAL = {"romatsa_wfs": 300, "faa_nms": 180, "text": 60}  # FAA: o interogare la 3 min
 
     def __init__(self, name: str = "romatsa", source: str = "romatsa_wfs", urls: list[str] | str | None = None, *,
-                 watch_firs=("LUUU",), locations=("LRIA", "LRSV", "LUKK", "LUBL"),
+                 watch_firs=("LUUU",), locations=("LRIA", "LRSV", "LRBC", "LUKK", "LUBL"),
                  max_dist_km: float = 200, max_prut_km: float = 60, near_km: float = 60, near_prut_km: float = 15,
                  near_prut_max_km: float = 120,
                  categories=None, client_id: str = "", client_secret: str = "", nms_host: str = NMS_HOST,

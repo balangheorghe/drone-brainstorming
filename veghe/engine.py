@@ -318,8 +318,11 @@ class Engine:
         # o direcție nouă (zonă la ≥ 60 km de toate cele anunțate) sau zonele anunțate nu mai sunt în alertă
         known = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
         # doar zone care nu sunt (mult) mai departe de Iași decât cea mai apropiată anunțată
-        lim = 230.0  # Bilhorod, Berezivka, Odesa, Vinnytsia: adânc în UA, nu o direcție nouă spre Iași
-        rel = [p for p in pts if self._tdist(p)[0] <= lim]
+        # Bilhorod, Berezivka, Odesa, Vinnytsia: adânc în UA, nu o direcție nouă. Măsurat față de ținta
+        # principală (Iași), nu de cea mai apropiată: cu Botoșani/Vaslui ca ținte, Vinnytsia (212 km) și
+        # Bilhorod (207 km) ar intra sub prag și ar da „direcție nouă” la fiecare alertă de acolo.
+        lim = 230.0
+        rel = [p for p in pts if geo.dist(p, self.cfg.target) <= lim]
         new_axis = bool(known) and any(min(geo.dist(p, q) for q in known) >= 60 for p in rel)
         moved = bool(self.vigilance_areas) and bool(rel) and not ({p.key for p in pts} & self.vigilance_areas)
         if not self.vigilance_announced or ((closer or new_axis or moved) and not quiet):
@@ -956,7 +959,7 @@ class Engine:
         avertizările GNSS rămân doar context (/stare), fără mesaje."""
         cat, fir, locs = m.get("category"), m.get("fir"), set(m.get("locations") or [])
         return bool((cat == "spatiu_aerian_inchis" and (m.get("near") or m.get("near_tinta") or fir == "LUUU"))
-                    or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL", "LRSV"})
+                    or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL", "LRSV", "LRBC"})
                     or (cat == "restrictie_spatiu_aerian" and fir == "LUUU"))
 
     def _notam_near_targets(self, m: dict) -> bool:

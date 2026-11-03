@@ -92,14 +92,19 @@ def test_notam_suceava_airport_closure_is_announced():
 def test_example_config_monitors_suceava():
     cfg = load(str(ROOT / "config.example.toml"), env={})
     e = app.build_engine(cfg, None)
-    assert [t.key for t in e.targets] == ["iasi", "suceava"]
+    assert [t.key for t in e.targets] == ["iasi", "suceava", "botosani", "piatra_neamt", "bacau", "vaslui"]
+    assert [t.name for t in e.targets][3] == "Piatra Neamț"
     assert {"Чернівецький район", "Вижницький район"} <= set(e.cfg.watch_raions)
     cols = app.build_collectors(cfg)
     adsb = next(c for c in cols if isinstance(c, C.Adsb))
     assert any(p["name"] == "LRSV Suceava" and abs(p["lat"] - 47.688) < 0.01 for p in adsb.points)
+    assert any(p["name"] == "LRBC Bacău" and abs(p["lat"] - 46.522) < 0.01 for p in adsb.points)
     notam = next(c for c in cols if isinstance(c, NotamCollector))
-    assert "LRSV" in notam.locations
-    assert "LRSV" in NotamCollector().locations   # și implicit, fără config
+    assert {"LRSV", "LRBC"} <= notam.locations
+    assert {"LRSV", "LRBC"} <= NotamCollector().locations   # și implicit, fără config
+    # fără [engine] targets în config.toml (config vechi): tot Nord-Estul, din cod
+    from veghe.config import Config
+    assert len(app.build_engine(Config({}), None).targets) == 6
 
 
 def test_unknown_target_is_a_config_error():
@@ -110,6 +115,7 @@ def test_unknown_target_is_a_config_error():
     with pytest.raises(ConfigError):
         app._targets(["atlantida"])
     assert [p.key for p in app._targets(["Iași", "Suceava"])] == ["iasi", "suceava"]
+    assert [p.name for p in app._targets(["neamt", "Bacău"])] == ["Piatra Neamț", "Bacău"]
 
 
 def test_notam_near_suceava_cancel_and_expiry_are_announced():
