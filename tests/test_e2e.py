@@ -659,3 +659,21 @@ def test_check_sources_hides_military_content(tmp_path, upstream, env, capsys):
     out = capsys.readouterr()
     assert "militar: date OK, 1 aeronave" in out.out
     assert "avion de luptă" not in out.out + out.err and "km NE" not in out.out
+
+
+def test_flapping_source_announced_once_per_two_hours(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    c = app.collectors[0]
+    t = dt.datetime.now(UTC)
+    texts = []
+    app._submit = lambda msgs: texts.extend(x.text for x in msgs)
+    for k in range(3):                                            # cade, revine, cade din nou, de 3 ori
+        app.errors[c.name] = 3
+        app._source_down(c, OSError("jos"), t + dt.timedelta(minutes=20 * k))
+        app.down.discard(c.name) if c.name not in app.down_announced else None
+        if c.name in app.down:                                    # revenire, ca în run_cycle
+            app.down.discard(c.name)
+            if c.name in app.down_announced:
+                app.down_announced.discard(c.name)
+                texts.append("revenit")
+    assert sum("SURSĂ CĂZUTĂ" in x for x in texts) == 1 and texts.count("revenit") == 1

@@ -164,6 +164,12 @@ class Store:
                 return list(self._db.execute(f"SELECT * FROM outbox WHERE status=? ORDER BY id {order} LIMIT ?", (status, limit)))
             return list(self._db.execute("SELECT * FROM outbox ORDER BY id DESC LIMIT ?", (limit,)))
 
+    def outbox_recent(self, channel: str, kind: str, since: dt.datetime, limit: int = 100) -> list[sqlite3.Row]:
+        with self._lock:
+            return list(self._db.execute(
+                "SELECT * FROM outbox WHERE channel=? AND kind=? AND created_at>=? ORDER BY id DESC LIMIT ?",
+                (channel, kind, iso(since), limit)))
+
     def outbox_due(self, at: dt.datetime, limit: int = 50) -> list[sqlite3.Row]:
         """Mesajele de trimis acum (filtrul pe next_attempt_at e ÎNAINTE de LIMIT, ca rândurile
         în reîncercare să nu blocheze mesajele noi)."""

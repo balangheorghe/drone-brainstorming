@@ -67,6 +67,7 @@ class EngineConfig:
     ttl_min: float = 45
     approach_km: float = 120
     vigilance_quiet_min: float = 20
+    vigilance_end_min: float = 30  # episodul de vigilență se încheie abia după atâtea minute fără alerte
     official_repeat_min: float = 60
     tg_alert_ttl_min: float = 90
     state_stale_min: float = 10
@@ -87,6 +88,7 @@ class Hypothesis:
     notified: Level = Level.FOND
     last_msg_at: dt.datetime | None = None
     last_msg_place: str = ""
+    last_msg_km: float | None = None
     sources: list[str] = field(default_factory=list)
     closed: bool = False
 
@@ -109,6 +111,9 @@ class Engine:
         self.vigilance_since: dt.datetime | None = None
         self.vigilance_msg_at: dt.datetime | None = None
         self.vigilance_titles: set[str] = set()
+        self.vigilance_inactive_since: dt.datetime | None = None
+        self.vigilance_announced = False
+        self.vigilance_best_km: float | None = None
         self.hyps: list[Hypothesis] = []
         self._next_id = int(store.kv_get("next_hypothesis_id", "1")) if store else 1
         self.last_official: dict[str, dt.datetime] = {}
@@ -222,32 +227,82 @@ class Engine:
         return any("drones" in a.get("threats", []) for lst in self.ua_state.values() for a in lst)
 
     def _update_vigilance(self, now) -> list[Message]:
+        """Un mesaj la începutul unui episod de vigilență; din nou doar dacă alerta ajunge mult mai aproape
+        de Iași (≥ 15 km, după pauza de liniște). Episodul se încheie abia după `vigilance_end_min` minute
+        fără alerte, ca o alertă care se oprește și repornește să nu producă mesaje noi."""
         active = self._active_titles(now)
         msgs = []
-        if active and self.vigilance_since is None:
-            self.vigilance_since = now
-            self._event(Level.VIGILENTA, None, "vigilenta_start", ", ".join(sorted(active)), now)
-        if not active and self.vigilance_since is not None:
-            self._event(Level.FOND, None, "vigilenta_stop", "", now)
-            self.vigilance_since = None
-            self.vigilance_titles = set()
+        if not active:
+            if self.vigilance_since is not None:
+                if self.vigilance_inactive_since is None:
+                    self.vigilance_inactive_since = now
+                    self._save_vigilance(now)
+                elif now - self.vigilance_inactive_since >= dt.timedelta(minutes=self.cfg.vigilance_end_min):
+                    self._event(Level.FOND, None, "vigilenta_stop", "", now)
+                    self.vigilance_since = None
+                    self.vigilance_inactive_since = None
+                    self.vigilance_titles = set()
+                    self.vigilance_best_km = None
+                    self.vigilance_announced = False
+                    self._save_vigilance(now)
             return msgs
-        new = active - self.vigilance_titles
-        quiet = dt.timedelta(minutes=self.cfg.vigilance_quiet_min)
-        if active and new and (self.vigilance_msg_at is None or now - self.vigilance_msg_at >= quiet):
-            pts = [geo.BY_KEY[k] for k in {geo.UA_AREA_POINT.get(t) for t in active} if k in geo.BY_KEY]
-            near = min(pts, key=lambda p: geo.dist(p, self.cfg.target)) if pts else None
+        self.vigilance_inactive_since = None
+        if self.vigilance_since is None:
+            self.vigilance_since = now
+            self.vigilance_announced = False
+            self.vigilance_best_km = None
+            self._event(Level.VIGILENTA, None, "vigilenta_start", ", ".join(sorted(active)), now)
+        pts = [geo.BY_KEY[k] for k in {geo.UA_AREA_POINT.get(t) for t in active} if k in geo.BY_KEY]
+        near = min(pts, key=lambda p: geo.dist(p, self.cfg.target)) if pts else None
+        near_km = geo.dist(near, self.cfg.target) if near else None
+        quiet = self.vigilance_msg_at is not None and now - self.vigilance_msg_at < dt.timedelta(minutes=self.cfg.vigilance_quiet_min)
+        closer = (near_km is not None and self.vigilance_best_km is not None and near_km <= self.vigilance_best_km - 15)
+        if not self.vigilance_announced or (closer and not quiet):
             eta = ""
             if near:
-                a, b = geo.eta_minutes(geo.dist(near, self.cfg.target))
+                a, b = geo.eta_minutes(near_km)
                 eta = f" Dacă o dronă ar veni de acolo spre {self.cfg.target.name}: ~{a}–{b} min (linie dreaptă)."
             threat = " Tip amenințare raportat: drone." if self._drone_threat() else ""
-            text = (f"[INTERN] VIGILENȚĂ · {hhmm(now)}. Alertă aeriană activă în: {', '.join(sorted(active))}.{threat}{eta}"
+            upd = " Alerta s-a extins mai aproape de Iași." if self.vigilance_announced else ""
+            text = (f"[INTERN] VIGILENȚĂ · {hhmm(now)}. Alertă aeriană activă în: {', '.join(sorted(active))}.{upd}{threat}{eta}"
                     f"{self._adsb_note(now)} Stare internă, nespecifică (filtrul e activ ~20% din timp). Nicio acțiune publică.")
             msgs.append(Message("internal", "vigilenta", text, Level.VIGILENTA))
             self.vigilance_msg_at = now
+            self.vigilance_announced = True
+            if near_km is not None:
+                self.vigilance_best_km = near_km if self.vigilance_best_km is None else min(self.vigilance_best_km, near_km)
+            self._save_vigilance(now)
+        elif self.vigilance_best_km is None and near_km is not None:
+            self.vigilance_best_km = near_km
         self.vigilance_titles = set(active)
         return msgs
+
+    def _save_vigilance(self, now):
+        if not self.store:
+            return
+        st = {"la": iso(now), "since": iso(self.vigilance_since) if self.vigilance_since else None,
+              "inactive_since": iso(self.vigilance_inactive_since) if self.vigilance_inactive_since else None,
+              "msg_at": iso(self.vigilance_msg_at) if self.vigilance_msg_at else None,
+              "announced": self.vigilance_announced, "best_km": self.vigilance_best_km,
+              "titles": sorted(self.vigilance_titles)}
+        self.store.kv_set("stare_vigilenta", json.dumps(st, ensure_ascii=False))
+
+    def _restore_vigilance(self, t):
+        """După repornire: episodul de vigilență în curs continuă (fără un nou mesaj VIGILENȚĂ)."""
+        try:
+            st = json.loads(self.store.kv_get("stare_vigilenta", "") or "{}")
+        except ValueError:
+            return
+        at = parse_iso(st.get("la"))
+        if not at or t - at > dt.timedelta(hours=2) or not st.get("since"):
+            return
+        self.vigilance_since = parse_iso(st["since"])
+        self.vigilance_msg_at = parse_iso(st.get("msg_at"))
+        self.vigilance_announced = bool(st.get("announced"))
+        self.vigilance_best_km = st.get("best_km")
+        self.vigilance_titles = set(st.get("titles") or [])
+        # până la prima citire a stării UA, socotim pauza de la ultima stare cunoscută
+        self.vigilance_inactive_since = parse_iso(st.get("inactive_since")) or at
 
     def _tg_alert(self, sig: Signal, now) -> list[Message]:
         # pe linii: normalize() ar transforma rândurile noi în spații și ar lipi rândul următor de localitate
@@ -281,10 +336,15 @@ class Engine:
 
     def _hyp_message(self, h: Hypothesis, kind: str, sig: Signal, now) -> list[Message]:
         place_key = h.place.key if h.place else ""
-        changed = h.level > h.notified or place_key != h.last_msg_place
-        recent = h.last_msg_at is not None and now - h.last_msg_at < dt.timedelta(minutes=3)
-        if not changed or (recent and h.level <= h.notified):
-            return []
+        d_km = geo.dist(h.place, self.cfg.target) if h.place else None
+        level_up = h.level > h.notified
+        near_level = h.level >= Level.APROPIERE
+        step = 10 if near_level else 25            # km mai aproape de Iași față de ultimul mesaj
+        gap = dt.timedelta(minutes=5 if near_level else 10)
+        closer = d_km is not None and (h.last_msg_km is None or d_km <= h.last_msg_km - step)
+        recent = h.last_msg_at is not None and now - h.last_msg_at < gap
+        if not level_up and (not closer or recent):
+            return []  # aceeași dronă, fără apropiere reală: nu repetăm mesajul
         pos = self._eta_text(h.place) if h.place else "poziție nepublicată"
         jet = " (posibil cu reacție)" if h.jet else ""
         src = f"{sig.source} {sig.url}".strip()
@@ -302,6 +362,8 @@ class Engine:
         h.notified = max(h.notified, h.level)
         h.last_msg_at = now
         h.last_msg_place = place_key
+        if d_km is not None:
+            h.last_msg_km = d_km
         return [Message("internal", kind, text, h.level, h.id, sig.role)]
 
     def _ua_direction(self, sig, f, now) -> list[Message]:
@@ -692,6 +754,7 @@ class Engine:
 
         t = _now()
         self._restore_aviation(t)
+        self._restore_vigilance(t)
         try:
             rows = self.store.signals_by_role("notam", t - dt.timedelta(days=21))
         except Exception:  # noqa: BLE001 - arhivă veche sau indisponibilă

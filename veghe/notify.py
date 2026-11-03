@@ -72,6 +72,18 @@ def redact_military(text: str, kind: str = "", status: str = "sent") -> str:
     return MIL_NOTE_RX.sub(" [notă ADS-B militar nepăstrată].", text)
 
 
+# mesaje interne care nu trec prin filtrul de dubluri (au regulile lor)
+DEDUP_EXEMPT = {"pornire", "aprobare", "esec"}
+_TIME_RX = re.compile(r"\b\d{1,2}:\d{2}(?:\s*EES?T)?\b")
+_HYP_RX = re.compile(r"\bH-\d+\b")
+
+
+def dedup_key(text: str) -> str:
+    """Textul fără ore și fără numărul ipotezei: două mesaje cu aceeași cheie spun același lucru."""
+    t = _HYP_RX.sub("H", _TIME_RX.sub("", text or ""))
+    return " ".join(t.split()).lower()
+
+
 class ConsoleSender:
     name = "console"
     min_interval = 0.0
@@ -129,18 +141,25 @@ class NtfySender:
 
 class Dispatcher:
     def __init__(self, store, internal: list, public: list, *, public_enabled: bool = False,
-                 auto_publish_official: bool = False, max_attempts: int = MAX_ATTEMPTS):
+                 auto_publish_official: bool = False, max_attempts: int = MAX_ATTEMPTS, dedup_min: float = 60):
         self.store = store
         self.senders = {"internal": internal, "public": public}
         self.public_enabled = public_enabled and bool(public)
         self.auto_publish = auto_publish_official
         self.max_attempts = max_attempts
+        self.dedup = dt.timedelta(minutes=dedup_min)
         self._last_sent: dict[str, float] = {}
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ intrare
     def submit(self, msg: Message) -> int:
         if msg.channel == "internal":
+            if self.dedup and msg.kind not in DEDUP_EXEMPT:
+                key = dedup_key(msg.text)
+                for row in self.store.outbox_recent("internal", msg.kind, now() - self.dedup):
+                    if row["status"] in ("queued", "sent", "unknown") and dedup_key(row["text"]) == key:
+                        log.info("mesaj intern identic cu #%s din ultima oră: nu se retrimite", row["id"])
+                        return self.store.enqueue("internal", msg.kind, msg.text, "duplicat", msg.origin_role)
             return self.store.enqueue("internal", msg.kind, msg.text, "queued", msg.origin_role)
         if msg.channel != "public":
             raise ValueError(f"canal necunoscut: {msg.channel}")

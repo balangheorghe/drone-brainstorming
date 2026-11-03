@@ -151,7 +151,7 @@ def build_engine(cfg: Config, store) -> Engine:
         watch_raions=cfg.get("watch", "ua_raions", default=[]),
         watch_counties=_str_list(e.get("watch_counties", d["watch_counties"].default_factory()), "engine.watch_counties"),
         max_age_min=g("max_age_min"), max_age_news_min=g("max_age_news_min"), ttl_min=g("ttl_min"),
-        approach_km=g("approach_km"), vigilance_quiet_min=g("vigilance_quiet_min"),
+        approach_km=g("approach_km"), vigilance_quiet_min=g("vigilance_quiet_min"), vigilance_end_min=g("vigilance_end_min"),
         official_repeat_min=g("official_repeat_min"), tg_alert_ttl_min=g("tg_alert_ttl_min"),
         state_stale_min=g("state_stale_min"),
     )
@@ -198,7 +198,8 @@ def build_dispatcher(cfg: Config, store, verify_private: bool = False) -> tuple[
     if tok and cfg.secret("telegram_public_chat_id"):
         public.append(TelegramSender(tok, cfg.secret("telegram_public_chat_id"), api, gap))
     return Dispatcher(store, internal, public, public_enabled=bool(cfg.get("notify", "public_enabled", default=False)),
-                      auto_publish_official=bool(cfg.get("notify", "auto_publish_official", default=False))), trusted
+                      auto_publish_official=bool(cfg.get("notify", "auto_publish_official", default=False)),
+                      dedup_min=num(cfg.get("notify", "dedup_min", default=60), "notify.dedup_min")), trusted
 
 
 class App:
@@ -212,6 +213,8 @@ class App:
         self.errors: dict[str, int] = {c.name: 0 for c in self.collectors}
         self.polled_ok: set[str] = set()
         self.down: set[str] = set()
+        self.down_msg_at: dict[str, dt.datetime] = {}
+        self.down_announced: set[str] = set()
         self.running: dict[str, Future] = {}
         self.started: dict[str, float] = {}
         self.stuck: set[str] = set()
@@ -268,6 +271,12 @@ class App:
         if c.name in self.down or self.errors[c.name] < DOWN_AFTER_ERRORS:
             return
         self.down.add(c.name)
+        last = self.down_msg_at.get(c.name)
+        if last and t - last < dt.timedelta(hours=2):
+            log.warning("sursa %s din nou căzută (anunțată deja la %s; fără mesaj nou)", c.name, hhmm(last))
+            return  # sursă intermitentă: nu repetăm „căzută / a revenit” de mai multe ori pe oră
+        self.down_msg_at[c.name] = t
+        self.down_announced.add(c.name)
         self._submit([Message("internal", "sursa_cazuta",
                               f"[INTERN] SURSĂ CĂZUTĂ · {hhmm(t)}. {c.name} nu răspunde ({type(err).__name__}, "
                               f"{self.errors[c.name]} erori la rând). Avertizarea pe această cale e oarbă până revine.")])
@@ -305,7 +314,9 @@ class App:
                 produced += self.ingest(sigs, t, warmup=warm)
                 if name in self.down:
                     self.down.discard(name)
-                    self._submit([Message("internal", "sursa_revenita", f"[INTERN] Sursa {name} a revenit · {hhmm(t)}.")])
+                    if name in self.down_announced:
+                        self.down_announced.discard(name)
+                        self._submit([Message("internal", "sursa_revenita", f"[INTERN] Sursa {name} a revenit · {hhmm(t)}.")])
             else:
                 self.errors[name] += 1
                 backoff = min(c.interval * (2 ** min(self.errors[name], 5)), 900)
