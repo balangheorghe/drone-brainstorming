@@ -43,7 +43,7 @@
 - *Un microfon:* spune doar „există/nu există”, fără direcție.
 - *Matrice de microfoane (beamforming):* dă azimutul. Ex. miniDSP UMA-16, ReSpeaker.
 - *Rețea TDOA:* nodurile trebuie sincronizate cu GPS (PPS); o eroare de 1 ms strică localizarea. Nodul trimite doar detecția cu marcaj de timp, nu audio brut.
-- *Clasificare ML pe nod:* nu există un set public dedicat Shahed. Seturi utile: [DADS](https://huggingface.co/datasets/geronimobasso/drone-audio-detection-samples) (MIT), [DroneAudioDataset](https://github.com/saraalemadi/DroneAudioDataset). Proiecte: [Sych-Tech](https://github.com/Sych-Tech) (voluntari ucraineni, RPi + ReSpeaker), [Batear](https://github.com/batear-io/batear) (ESP32-S3 + MEMS, ~15 USD, testat doar pe înregistrări; README-ul folosește 915 MHz, care **nu** e bandă UE). 16 kHz eșantionare ajunge.
+- *Clasificare ML pe nod:* nu există un set public dedicat Shahed. Seturi utile: [DADS](https://huggingface.co/datasets/geronimobasso/drone-audio-detection-samples) (MIT), [DroneAudioDataset](https://github.com/saraalemadi/DroneAudioDataset) – **atenție: licența lui interzice explicit folosirea în aplicații de securitate, supraveghere sau apărare** (doar cercetare academică necomercială), deci nu poate fi folosit pentru un sistem de avertizare. Proiecte: [Sych-Tech](https://github.com/Sych-Tech) (voluntari ucraineni, RPi + ReSpeaker), [Batear](https://github.com/batear-io/batear) (ESP32-S3 + MEMS, ~15 USD, testat doar pe înregistrări; README-ul folosește 915 MHz, care **nu** e bandă UE). 16 kHz eșantionare ajunge.
 
 **Limite:** vânt peste ~5 m/s, ploaie, inversiuni termice (zone de umbră acustică); alarme false de la tractoare, drujbe, mopede, ultraușoare, furtuni.
 

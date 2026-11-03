@@ -71,6 +71,7 @@ Detalii: [docs/02-surse-predictie.md](docs/02-surse-predictie.md); toate fluxuri
 | [11-fluxuri-date-harti](docs/11-fluxuri-date-harti.md) | ce fluxuri de date și hărți să agregați întâi, cum, ce să nu publicați |
 | [12-catalog-surse](docs/12-catalog-surse.md) | anexă: 141 de surse cu acces, cost, licență, actualizare, precauții |
 | [13-implementare-deploy](docs/13-implementare-deploy.md) | serviciul `veghe`: ce face, ce s-a validat, cum se instalează |
+| [14-catalog-surse-noi](docs/14-catalog-surse-noi.md) | 457 de surse noi, verificate (167 confirmate, 290 probabile), pe 8 categorii; date brute în [JSON](docs/14-catalog-surse-noi.json) |
 | [analysis/](analysis/) | scriptul care leagă detecțiile moldovenești și incidentele de alertele ucrainene + [rezultate](analysis/rezultate.md) |
 
 ## Limitări
