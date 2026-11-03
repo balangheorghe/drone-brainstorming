@@ -12,6 +12,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import collectors as C
+from . import geo
 from . import http
 from .config import Config, ConfigError, num
 from .engine import Engine, EngineConfig
@@ -141,6 +142,19 @@ def build_collectors(cfg: Config) -> list[C.Collector]:
     return out
 
 
+def _targets(v) -> list:
+    """[engine] targets = ["iasi", "suceava"]: chei sau nume de localități din veghe.geo."""
+    from .nlp import normalize
+
+    out = []
+    for k in _str_list(v, "engine.targets"):
+        p = geo.BY_KEY.get(k) or next((x for x in geo.GAZETTEER if normalize(x.name) == normalize(k)), None)
+        if p is None:
+            raise ConfigError(f"engine.targets: localitate necunoscută „{k}”")
+        out.append(p)
+    return out or [geo.IASI]
+
+
 def build_engine(cfg: Config, store) -> Engine:
     e = cfg.get("engine", default={}) or {}
     d = EngineConfig.__dataclass_fields__
@@ -156,6 +170,7 @@ def build_engine(cfg: Config, store) -> Engine:
         approach_km=g("approach_km"), vigilance_quiet_min=g("vigilance_quiet_min"), vigilance_end_min=g("vigilance_end_min"),
         official_repeat_min=g("official_repeat_min"), tg_alert_ttl_min=g("tg_alert_ttl_min"),
         state_stale_min=g("state_stale_min"),
+        targets=_targets(e.get("targets", ["iasi", "suceava"])),
     )
     return Engine(ec, store)
 

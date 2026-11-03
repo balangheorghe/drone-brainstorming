@@ -110,6 +110,7 @@ class EngineConfig:
     tg_alert_ttl_min: float = 90
     state_stale_min: float = 10
     target: geo.Place = geo.IASI
+    targets: list = field(default_factory=list)  # ținte urmărite (ex. Iași, Suceava); gol = doar `target`
 
 
 @dataclass
@@ -207,15 +208,25 @@ class Engine:
     def open_hyps(self) -> list[Hypothesis]:
         return [h for h in self.hyps if not h.closed]
 
+    @property
+    def targets(self) -> list[geo.Place]:
+        return list(self.cfg.targets) or [self.cfg.target]
+
+    def _tdist(self, p: geo.Place) -> tuple[float, geo.Place]:
+        """Distanța până la cea mai apropiată țintă urmărită (ex. Iași sau Suceava) și ținta."""
+        return min(((geo.dist(p, t), t) for t in self.targets), key=lambda x: x[0])
+
     def _eta_text(self, p: geo.Place) -> str:
-        d_t = geo.dist(p, self.cfg.target)
+        d_t, t = self._tdist(p)
         a, b = geo.eta_minutes(d_t)
+        also = (f" (~{geo.dist(p, self.cfg.target):.0f} km de {self.cfg.target.name})"
+                if t is not self.cfg.target and len(self.targets) > 1 else "")
         if p.country == "RO":
-            return f"{p.name}: {d_t:.0f} km de {self.cfg.target.name}"
+            return f"{p.name}: {d_t:.0f} km de {t.name}{also}"
         d_p = geo.dist_to_prut_km(p)
         pa, pb = geo.eta_minutes(d_p)
-        return (f"{p.name}: ~{d_t:.0f} km de {self.cfg.target.name}. ETA Prut {pa}–{pb} min, "
-                f"{self.cfg.target.name} {a}–{b} min (linie dreaptă, 450/150 km/h)")
+        return (f"{p.name}: ~{d_t:.0f} km de {t.name}{also}. ETA Prut {pa}–{pb} min, "
+                f"{t.name} {a}–{b} min (linie dreaptă, 450/150 km/h)")
 
     def _fresh(self, point: str, now) -> bool:
         """Starea ADS-B a zonei e folosită în note doar dacă e recentă (≤ 5 min)."""
@@ -242,7 +253,7 @@ class Engine:
             # doar numere, fără poziții; marcajul permite înlocuirea notei în arhivă după livrare
             notes.append(f"ADS-B militar (NU REDISTRIBUIȚI): {self.military.get('numere')} (detalii în /stare).")
         closed = [m for m in self.notam_active.values()
-                  if m.get("category") == "spatiu_aerian_inchis" and (m.get("near") or m.get("fir") == "LUUU")
+                  if m.get("category") == "spatiu_aerian_inchis" and (m.get("near") or m.get("near_tinta") or m.get("fir") == "LUUU")
                   and (now is None or not parse_iso(m.get("start")) or parse_iso(m.get("start")) <= now)]
         if closed:
             notes.append("NOTAM activ: " + "; ".join(f"{m.get('id')} {NOTAM_CAT_RO.get(m.get('category'), m.get('category'))}"
@@ -300,26 +311,26 @@ class Engine:
             self.vigilance_best_km = None
             self._event(Level.VIGILENTA, None, "vigilenta_start", ", ".join(sorted(active)), now)
         pts = [geo.BY_KEY[k] for k in {geo.UA_AREA_POINT.get(t) for t in active} if k in geo.BY_KEY]
-        near = min(pts, key=lambda p: geo.dist(p, self.cfg.target)) if pts else None
-        near_km = geo.dist(near, self.cfg.target) if near else None
+        near = min(pts, key=lambda p: self._tdist(p)[0]) if pts else None
+        near_km, near_t = self._tdist(near) if near else (None, self.cfg.target)
         quiet = self.vigilance_msg_at is not None and now - self.vigilance_msg_at < dt.timedelta(minutes=self.cfg.vigilance_quiet_min)
         closer = (near_km is not None and self.vigilance_best_km is not None and near_km <= self.vigilance_best_km - 15)
         # o direcție nouă (zonă la ≥ 60 km de toate cele anunțate) sau zonele anunțate nu mai sunt în alertă
         known = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
         # doar zone care nu sunt (mult) mai departe de Iași decât cea mai apropiată anunțată
         lim = 230.0  # Bilhorod, Berezivka, Odesa, Vinnytsia: adânc în UA, nu o direcție nouă spre Iași
-        rel = [p for p in pts if geo.dist(p, self.cfg.target) <= lim]
+        rel = [p for p in pts if self._tdist(p)[0] <= lim]
         new_axis = bool(known) and any(min(geo.dist(p, q) for q in known) >= 60 for p in rel)
         moved = bool(self.vigilance_areas) and bool(rel) and not ({p.key for p in pts} & self.vigilance_areas)
         if not self.vigilance_announced or ((closer or new_axis or moved) and not quiet):
             eta = ""
             if near:
                 a, b = geo.eta_minutes(near_km)
-                eta = f" Dacă o dronă ar veni de acolo spre {self.cfg.target.name}: ~{a}–{b} min (linie dreaptă)."
+                eta = f" Dacă o dronă ar veni de acolo spre {near_t.name}: ~{a}–{b} min (linie dreaptă)."
             threat = " Tip amenințare raportat: drone." if self._drone_threat() else ""
             upd = ""
             if self.vigilance_announced:
-                upd = (" Alerta s-a extins mai aproape de Iași." if closer else
+                upd = (f" Alerta s-a extins mai aproape de {near_t.name}." if closer else
                        " Alertă pe o direcție nouă." if new_axis else " Alerta s-a mutat în altă zonă.")
             text = (f"[INTERN] VIGILENȚĂ · {hhmm(now)}. Alertă aeriană activă în: {', '.join(sorted(active))}.{upd}{threat}{eta}"
                     f"{self._adsb_note(now)} Stare internă, nespecifică (filtrul e activ ~20% din timp). Nicio acțiune publică.")
@@ -420,7 +431,7 @@ class Engine:
         """Când se (re)trimite mesajul unei ipoteze. `place` = poziția fixată a unei actualizări amânate."""
         place = place or h.place
         place_key = place.key if place else ""
-        d_km = geo.dist(place, self.cfg.target) if place else None
+        d_km, near_t = self._tdist(place) if place else (None, self.cfg.target)
         level_up = h.level > h.notified
         near_level = h.level >= Level.APROPIERE
         step = 10 if near_level else 25            # km mai aproape de Iași decât ce a văzut grupul ultima dată
@@ -446,7 +457,7 @@ class Engine:
             cur = h.pending
             if closer:
                 # apropiere reală, dar prea curând: o păstrăm (cu poziția ei) și o trimitem din tick() după pauză
-                if not (cur and cur[3] and cur[2] is not None and geo.dist(cur[2], self.cfg.target) < d_km):
+                if not (cur and cur[3] and cur[2] is not None and self._tdist(cur[2])[0] < d_km):
                     h.pending = (kind, sig, place, True)
             elif not (cur and cur[3]):
                 cur_new = bool(cur) and cur[2] is not None and cur[2].key not in h.reported
@@ -466,7 +477,7 @@ class Engine:
             text = (f"[INTERN] ATENȚIE · {hhmm(now)} · H-{h.id}. R. Moldova: dronă{jet} semnalată. {pos}. "
                     f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note(now)} Un RO-Alert poate urma.")
         else:  # apropiere
-            text = (f"[INTERN] APROPIERE · {hhmm(now)} · H-{h.id}. Dronă{jet} aproape de Prut / {self.cfg.target.name}. {pos}. "
+            text = (f"[INTERN] APROPIERE · {hhmm(now)} · H-{h.id}. Dronă{jet} aproape de Prut / {near_t.name}. {pos}. "
                     f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note(now)} "
                     f"Dacă nu există încă RO-Alert, contactați ISU conform protocolului.")
         h.notified = max(h.notified, h.level)
@@ -514,7 +525,7 @@ class Engine:
         if h.place.key in PRUT_EDGE_KEYS:
             return True
         west = h.place.lon < 28.65 or f.westward or any(p.country == "RO" for p in f.direction_to)
-        return geo.dist(h.place, self.cfg.target) <= self.cfg.approach_km and west
+        return self._tdist(h.place)[0] <= self.cfg.approach_km and west
 
     def _moldova(self, sig, f, now) -> list[Message]:
         if not f.drone:
@@ -527,7 +538,7 @@ class Engine:
         if f.lost_or_left and md:
             place = md[-1]
         elif md or dir_md:
-            place = min(md + dir_md, key=lambda p: geo.dist(p, self.cfg.target))
+            place = min(md + dir_md, key=lambda p: self._tdist(p)[0])
         nk = new_drone_kind(sig.text)
         mk = sure_marker(sig.text) if nk == 2 else ""
         h = (self._match_sure(place, now, mk) if nk == 2 else self._match_hyp(place, now, nk > 0))
@@ -944,9 +955,17 @@ class Engine:
         Zborurile planificate de drone, zonele restricționate de rutină (lunare, activări militare) și
         avertizările GNSS rămân doar context (/stare), fără mesaje."""
         cat, fir, locs = m.get("category"), m.get("fir"), set(m.get("locations") or [])
-        return bool((cat == "spatiu_aerian_inchis" and (m.get("near") or fir == "LUUU"))
-                    or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL"})
+        return bool((cat == "spatiu_aerian_inchis" and (m.get("near") or m.get("near_tinta") or fir == "LUUU"))
+                    or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL", "LRSV"})
                     or (cat == "restrictie_spatiu_aerian" and fir == "LUUU"))
+
+    def _notam_near_targets(self, m: dict) -> bool:
+        """NOTAM la ≤ 60 km (minus raza zonei) de o țintă secundară (ex. Suceava); Iașul e calculat de colector."""
+        lat, lon, r = m.get("lat"), m.get("lon"), m.get("radius_nm")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)) or (isinstance(r, (int, float)) and r > 100):
+            return False
+        rad = (r or 0) * 1.852
+        return any(geo.haversine_km(lat, lon, t.lat, t.lon) - rad <= 60 for t in self.targets if t is not self.cfg.target)
 
     def _notam_eligible(self, m: dict, now: dt.datetime) -> str | None:
         """„acum”, „viitor” (va fi eligibil) sau None."""
@@ -963,6 +982,7 @@ class Engine:
 
     def _notam(self, sig, now) -> list[Message]:
         m = dict(sig.meta or {})
+        m["near_tinta"] = self._notam_near_targets(m)
         m["_text"] = sig.text
         m.pop("_anuntat", None)
         kind = m.get("kind")

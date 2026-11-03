@@ -16,11 +16,14 @@ max_age_news_min = 60     # idem pentru presă / RSS (indexare mai lentă)
 tg_alert_ttl_min = 90     # o alertă văzută doar pe Telegram expiră după atâtea minute fără confirmare
 state_stale_min = 10      # starea unei surse de alerte UA care nu mai răspunde e ignorată după atâtea minute
 ttl_min = 45              # o ipoteză de traseu se închide după atâtea minute fără semnale
-approach_km = 120         # „apropiere”: poziție la ≤ atâția km de Iași, spre vest
+approach_km = 120         # „apropiere”: poziție la ≤ atâția km de cea mai apropiată țintă (Iași/Suceava), spre vest
 vigilance_quiet_min = 20 # pauza minimă înainte de o actualizare VIGILENȚĂ (alertă extinsă mai aproape de Iași)
 vigilance_end_min = 30    # episodul VIGILENȚĂ se încheie după atâtea minute fără alerte (o alertă care pâlpâie nu dă mesaje noi)
 official_repeat_min = 60  # o retransmitere per județ la cel mult atâtea minute
 watch_counties = ["Iași", "Botoșani", "Suceava", "Neamț", "Vaslui", "Bacău"]
+# Ținte urmărite: distanțele, ETA și „apropierea” se calculează față de cea mai apropiată.
+# Chei din dicționarul de localități (veghe/geo.py): iasi, suceava, botosani, chisinau etc.
+targets = ["iasi", "suceava"]
 
 [watch]
 # Nume exact cum apar în API-urile ucrainene (ucraineană)
@@ -29,6 +32,7 @@ ua_raions = [
   "Подільський район", "Роздільнянський район", "Березівський район",
   "Ізмаїльський район", "Болградський район", "Білгород-Дністровський район",
   "Могилів-Подільський район", "Тульчинський район", "Дністровський район",
+  "Чернівецький район", "Вижницький район",   # nordul Bucovinei: direcția Suceava / Siret
 ]
 
 # ---------------------------------------------------------------- surse
@@ -243,10 +247,11 @@ points = [
   { name = "control", lat = 46.6, lon = 24.6, radius_nm = 120 },     # Transilvania: departe de Prut și de Marea Neagră
   { name = "LUKK Chișinău", lat = 46.928, lon = 28.931, radius_nm = 40 },
   { name = "LRIA Iași", lat = 47.178, lon = 27.621, radius_nm = 30 },
+  { name = "LRSV Suceava", lat = 47.688, lon = 26.354, radius_nm = 30 },
 ]
 # Aeronave MILITARE din datele publice: doar un rezumat (tip general, ~distanță, direcție), DOAR în grupul
 # privat; nu se păstrează identități sau trasee. Nu redistribuiți pozițiile. Pentru oprire: enabled = false.
-military = { enabled = true, name = "Iași 150 NM", lat = 47.1, lon = 27.6, radius_nm = 150 }
+military = { enabled = true, name = "Iași 150 NM", lat = 47.1, lon = 27.6, radius_nm = 150 }   # acoperă și Suceava (~115 km)
 
 [sources.adsb.analysis]          # praguri (propuneri; de reglat pe istoricul agregat). Toate opționale.
 gnss_enter_ratio = 0.10          # interferență GNSS: > 10 % aeronave cu GPS degradat (banda „roșie” gpsjam)
@@ -257,19 +262,20 @@ turnback_min_deg = 150           # întoarcere: schimbare de direcție ≥ 150°
 drop_zero_polls = 3              # „0 avioane” confirmat în 3 citiri la rând
 
 # ---------------------------------------------------------------- NOTAM (restricții de spațiu aerian)
-# Context oficial, nu alertă în sine. Mesaj în grup DOAR pentru: spațiu aerian închis lângă Iași/Prut,
-# aeroport Iași/Chișinău/Bălți închis, restricții în spațiul aerian al R. Moldova. Restul (zboruri UAS
+# Context oficial, nu alertă în sine. Mesaj în grup DOAR pentru: spațiu aerian închis lângă Iași/Suceava/Prut,
+# aeroport Iași/Suceava/Chișinău/Bălți închis, restricții în spațiul aerian al R. Moldova. Restul (zboruri UAS
 # planificate, zone restricționate de rutină, avertizări GNSS) apare doar în /stare.
 [[sources.notam]]
 name = "romatsa"                 # FIR București (LRBB), inclusiv zonele restricționate de la granița cu MD/UA
 source = "romatsa_wfs"           # GeoServer public ROMATSA, fără cheie
 enabled = true
 interval = 900                   # secunde (minim 300)
-max_dist_km = 200                # relevant: zona la ≤ 200 km de Iași …
+max_dist_km = 200                # relevant: zona la ≤ 200 km de Iași (Suceava e la ~115 km) …
 max_prut_km = 60                 # … sau la ≤ 60 km de Prut
 near_km = 60                     # „aproape” (anunț imediat): ≤ 60 km de Iași …
 near_prut_km = 15                # … sau ≤ 15 km de Prut, dar nu mai departe de 120 km de Iași
 near_prut_max_km = 120
+locations = ["LRIA", "LRSV", "LUKK", "LUBL"]   # aeroporturi urmărite oriunde ar fi zona (Iași, Suceava, Chișinău, Bălți)
 
 [[sources.notam]]
 name = "faa"                     # FIR Chișinău (LUUU) – singura sursă găsită care l-ar putea avea; NECONFIRMAT

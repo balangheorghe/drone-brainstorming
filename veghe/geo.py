@@ -52,6 +52,9 @@ GAZETTEER: list[Place] = [
        ["могилів-подільськ", "могилев-подольск", "могилів", "mohyliv", "moghiliov"], VINN),
     _p("vinnytsia", "Vinnytsia", "UA", 49.233, 28.468, ["вінниц", "вінничин", "вінниччин", "винниц", "винничин", "vinnyts", "vinita", "vinnita"], VINN),
     _p("tulchyn", "Tulcin", "UA", 48.676, 28.848, ["тульчин", "tulchyn"], VINN),
+    _p("vyzhnytsia", "Vijnița", "UA", 48.250, 25.190, ["вижниц", "выжниц", "vijnita", "vyzhnyts"], CHERN),
+    _p("storozhynets", "Storojineț", "UA", 48.161, 25.719, ["сторожин", "storojinet", "storozhyn"], CHERN),
+    _p("hlyboka", "Hliboca", "UA", 48.081, 25.928, ["re:глибок\\w*", "re:глыбок\\w*", "hliboca", "hlyboka"], CHERN),
     _p("chernivtsi", "Cernăuți", "UA", 48.292, 25.935, ["чернівц", "чернівец", "чернівеччин", "черновц", "черновиц", "буковин", "chernivts", "cernauti"], CHERN),
     _p("novodnistrovsk", "Novodnistrovsk", "UA", 48.58, 27.44, ["новодністровськ", "новоднестровск", "novodnistrovsk"], CHERN),
     _p("mykolaiv", "Mykolaiv", "UA", 46.975, 31.995, ["миколаї", "миколаїв", "николаев", "mykolaiv"], MYK),
@@ -103,6 +106,9 @@ GAZETTEER: list[Place] = [
     _p("iasi", "Iași", "RO", 47.158, 27.601, ["iasi", "ясс"]),
     _p("botosani", "Botoșani", "RO", 47.748, 26.669, ["botosani", "ботошан"]),
     _p("suceava", "Suceava", "RO", 47.651, 26.255, ["suceava", "сучав"]),
+    _p("radauti", "Rădăuți", "RO", 47.842, 25.919, ["radauti", "рэдэуц", "радівц"]),
+    _p("siret", "Siret", "RO", 47.953, 26.064, ["re:(?:orasul |municipiul |la |din )siret\\b", "сирет"]),
+    _p("dorohoi", "Dorohoi", "RO", 47.957, 26.397, ["dorohoi", "дорохой"]),
     _p("vaslui", "Vaslui", "RO", 46.640, 27.729, ["vaslui", "васлу"]),
     _p("neamt", "Neamț", "RO", 46.927, 26.370, ["neamt", "piatra-neamt", "piatra neamt"]),
     _p("bacau", "Bacău", "RO", 46.567, 26.914, ["bacau", "бакэу", "бакеу"]),
@@ -116,6 +122,7 @@ BY_KEY = {p.key: p for p in GAZETTEER}
 IASI = BY_KEY["iasi"]
 LRIA = Place("lria", "Aeroportul Iași (LRIA)", "RO", 47.178, 27.621)
 LUKK = Place("lukk", "Aeroportul Chișinău (LUKK)", "MD", 46.928, 28.931)
+LRSV = Place("lrsv", "Aeroportul Suceava (LRSV)", "RO", 47.688, 26.354)
 
 # Linia Prutului (aproximativă, nord → sud)
 PRUT_LINE: list[tuple[float, float]] = [
@@ -146,6 +153,7 @@ UA_AREA_POINT: dict[str, str] = {
     VINN: "mohyliv",
     "Дністровський район": "novodnistrovsk",
     "Чернівецький район": "chernivtsi",
+    "Вижницький район": "vyzhnytsia",
     CHERN: "chernivtsi",
 }
 
