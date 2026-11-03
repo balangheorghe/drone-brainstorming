@@ -11,7 +11,17 @@ from veghe.models import Signal
 from veghe.store import Store
 from veghe.timeutil import UTC, iso
 
+import pytest
+
+from veghe import timeutil
+
 T0 = dt.datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _clock(monkeypatch):
+    """Repornirea citește ceasul real (timeutil.now); aici e fixat lângă T0, ca testele să nu depindă de data rulării."""
+    monkeypatch.setattr(timeutil, "now", lambda: T0 + dt.timedelta(minutes=5))
 
 
 def eng(store=None):

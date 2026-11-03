@@ -54,7 +54,7 @@ GAZETTEER: list[Place] = [
     _p("tulchyn", "Tulcin", "UA", 48.676, 28.848, ["тульчин", "tulchyn"], VINN),
     _p("vyzhnytsia", "Vijnița", "UA", 48.250, 25.190, ["вижниц", "выжниц", "vijnita", "vyzhnyts"], CHERN),
     _p("storozhynets", "Storojineț", "UA", 48.161, 25.719, ["сторожин", "storojinet", "storozhyn"], CHERN),
-    _p("hlyboka", "Hliboca", "UA", 48.081, 25.928, ["re:глибок\\w*", "re:глыбок\\w*", "hliboca", "hlyboka"], CHERN),
+    _p("hlyboka", "Hliboca", "UA", 48.081, 25.928, ["re:(?:на|до|біля|поблизу|у|в|районі|напрямку|над|під|з|із|через)\\s+глибок(?:а|у|ої|ій|ою)(?!\\w)", "глибоцьк", "re:глыбок\\w*", "hliboca", "hlyboka"], CHERN),
     _p("chernivtsi", "Cernăuți", "UA", 48.292, 25.935, ["чернівц", "чернівец", "чернівеччин", "черновц", "черновиц", "буковин", "chernivts", "cernauti"], CHERN),
     _p("novodnistrovsk", "Novodnistrovsk", "UA", 48.58, 27.44, ["новодністровськ", "новоднестровск", "novodnistrovsk"], CHERN),
     _p("mykolaiv", "Mykolaiv", "UA", 46.975, 31.995, ["миколаї", "миколаїв", "николаев", "mykolaiv"], MYK),
@@ -107,7 +107,7 @@ GAZETTEER: list[Place] = [
     _p("botosani", "Botoșani", "RO", 47.748, 26.669, ["botosani", "ботошан"]),
     _p("suceava", "Suceava", "RO", 47.651, 26.255, ["suceava", "сучав"]),
     _p("radauti", "Rădăuți", "RO", 47.842, 25.919, ["radauti", "рэдэуц", "радівц"]),
-    _p("siret", "Siret", "RO", 47.953, 26.064, ["re:(?:orasul |municipiul |la |din )siret\\b", "сирет"]),
+    _p("siret", "Siret", "RO", 47.953, 26.064, ["re:(?:orasul |municipiul |la |din )siret\\b", "сирет", "сірет"]),
     _p("dorohoi", "Dorohoi", "RO", 47.957, 26.397, ["dorohoi", "дорохой"]),
     _p("vaslui", "Vaslui", "RO", 46.640, 27.729, ["vaslui", "васлу"]),
     _p("neamt", "Neamț", "RO", 46.927, 26.370, ["neamt", "piatra-neamt", "piatra neamt"]),
@@ -127,7 +127,7 @@ LRBC = Place("lrbc", "Aeroportul Bacău (LRBC)", "RO", 46.522, 26.910)
 # Ținte cu alt nume afișat decât în dicționar („neamt” e județul; ținta e municipiul Piatra Neamț)
 PIATRA_NEAMT = Place("piatra_neamt", "Piatra Neamț", "RO", 46.927, 26.370)
 TARGET_KEYS: dict[str, Place] = {"piatra_neamt": PIATRA_NEAMT, "neamt": PIATRA_NEAMT}
-# Nord-Estul (cele 6 reședințe de județ); prima e ținta principală
+# Nord-Estul (cele 6 reședințe de județ); Iașul (prima) rămâne referința principală (EngineConfig.target)
 NE_TARGETS = ["iasi", "suceava", "botosani", "piatra_neamt", "bacau", "vaslui"]
 
 # Linia Prutului (aproximativă, nord → sud)

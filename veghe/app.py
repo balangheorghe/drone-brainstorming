@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -148,7 +149,9 @@ def _targets(v) -> list:
 
     out = []
     for k in _str_list(v, "engine.targets"):
-        p = geo.TARGET_KEYS.get(k) or geo.BY_KEY.get(k) or next((x for x in geo.GAZETTEER if normalize(x.name) == normalize(k)), None)
+        key = re.sub(r"[\s-]+", "_", normalize(k))  # „Piatra Neamț” → piatra_neamt
+        p = (geo.TARGET_KEYS.get(key) or geo.BY_KEY.get(key)
+             or next((x for x in geo.GAZETTEER if normalize(x.name) == normalize(k)), None))
         if p is None:
             raise ConfigError(f"engine.targets: localitate necunoscută „{k}”")
         out.append(p)
@@ -492,6 +495,7 @@ class App:
                  + (f" (episodul VIGILENȚĂ se încheie la {st['vigilenta_se_incheie']} dacă nu reapar)"
                     if st.get("vigilenta_se_incheie") and st['ultimul_ciclu'] else ""),
                  f"Ipoteze: {len(st['ipoteze'])} · mesaje publice în așteptare: {st['in_asteptare']}",
+                 f"Orașe urmărite: {', '.join(st.get('tinte') or []) or 'Iași'}",
                  f"Surse cu erori: {', '.join(bad) or 'niciuna'}"]
         if st["livrari_interne_esuate_24h"]:
             lines.append(f"ATENȚIE: {st['livrari_interne_esuate_24h']} mesaje interne nelivrate în 24 h (vezi `outbox`)")
@@ -515,7 +519,7 @@ class App:
             lines.append(f"Militar (ADS-B public, doar intern) la {st['militar']['la']}: {st['militar']['descriere']}")
         if st.get("notam_active"):
             near = [n for n in st["notam_active"] if n["aproape"] or n["fir"] == "LUUU"]
-            lines.append(f"NOTAM active: {len(st['notam_active'])} ({len(near)} lângă Iași/Prut sau în R. Moldova)"
+            lines.append(f"NOTAM active: {len(st['notam_active'])} ({len(near)} lângă orașele urmărite / Prut sau în R. Moldova)"
                          + ("".join(f"\n  · {n['id']} {n['categorie']} până la {n['pana_la']}" for n in near[:5])))
         return "\n".join(lines)
 

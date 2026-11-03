@@ -22,7 +22,8 @@ vigilance_end_min = 30    # episodul VIGILENȚĂ se încheie după atâtea minut
 official_repeat_min = 60  # o retransmitere per județ la cel mult atâtea minute
 watch_counties = ["Iași", "Botoșani", "Suceava", "Neamț", "Vaslui", "Bacău"]
 # Ținte urmărite: distanțele, ETA și „apropierea” se calculează față de cea mai apropiată.
-# Implicit tot Nord-Estul (cele 6 reședințe de județ); prima e ținta principală.
+# Implicit tot Nord-Estul (cele 6 reședințe de județ). Iașul rămâne referința pentru pragul „direcție nouă”
+# (230 km), pentru „(~X km de Iași)” din mesaje și pentru NOTAM-urile de lângă Prut, oricare ar fi lista.
 # Chei din dicționarul de localități (veghe/geo.py): iasi, suceava, botosani, piatra_neamt, bacau, vaslui etc.
 targets = ["iasi", "suceava", "botosani", "piatra_neamt", "bacau", "vaslui"]
 
@@ -267,7 +268,8 @@ drop_zero_polls = 3              # „0 avioane” confirmat în 3 citiri la râ
 # Context oficial, nu alertă în sine. Mesaj în grup DOAR pentru: spațiu aerian închis lângă o țintă
 # (orașele din Nord-Est) sau lângă Prut, aeroport Iași/Suceava/Bacău/Chișinău/Bălți închis, restricții
 # în spațiul aerian al R. Moldova. Restul (zboruri UAS planificate, zone restricționate de rutină,
-# avertizări GNSS) apare doar în /stare.
+# avertizări GNSS) apare doar în /stare. Notă: stratul ROMATSA de mai jos are zonele pentru drone, nu și
+# NOTAM-urile de aerodrom; închiderea unui aeroport apare doar dacă o sursă le conține (ex. FAA, oprită).
 [[sources.notam]]
 name = "romatsa"                 # FIR București (LRBB), inclusiv zonele restricționate de la granița cu MD/UA
 source = "romatsa_wfs"           # GeoServer public ROMATSA, fără cheie

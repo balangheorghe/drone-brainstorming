@@ -130,3 +130,114 @@ def test_notam_near_suceava_cancel_and_expiry_are_announced():
     e2.process(nsig(notam_meta(end=iso(T0 + dt.timedelta(hours=1)))), T0)
     out = [m for k in range(1, 4) for m in e2.tick(T0 + dt.timedelta(hours=k))]
     assert any("F8100/26" in m.text for m in out)
+
+
+# ------------------------------------------------------------------ Nord-Est: regresii găsite la verificare
+NE = app._targets(geo.NE_TARGETS)
+
+
+def ne_eng(store=None):
+    return Engine(EngineConfig(watch_oblasts=["Одеська область", "Вінницька область", "Чернівецька область"],
+                               watch_raions=["Подільський район", "Березівський район", "Білгород-Дністровський район",
+                                             "Чернівецький район", "Вижницький район"], targets=list(NE)), store)
+
+
+def mins(m):
+    return T0 + dt.timedelta(minutes=m)
+
+
+def test_drone_leaving_moldova_toward_ukraine_is_not_approach():
+    e = ne_eng()
+    assert [x.kind for x in md(e, "O dronă a fost observată în raionul Soroca")] == ["moldova"]
+    out = md(e, "Drona a părăsit spațiul aerian al R. Moldova pe la Otaci, revenind în Ucraina", mins(15))
+    assert [x.kind for x in out] == ["moldova"] and "contactați ISU" not in out[0].text
+    # „lansate spre Ucraina” fără „a părăsit”: tot o posibilă apropiere (Ocnița, ~91 km de Botoșani)
+    e2 = ne_eng()
+    out = md(e2, "Dronele lansate de Rusia spre Ucraina au intrat în spațiul aerian al R. Moldova la Ocnița")
+    assert [x.kind for x in out] == ["apropiere"] and "Botoșani" in out[0].text
+
+
+def test_ukrainian_position_does_not_become_approach_from_placeless_moldova_news():
+    e = ne_eng()
+    e.process(Signal(source="tg:kpszsu", role="ua_direction", text="БпЛА на Чернівеччині, курсом на захід",
+                     received_at=T0, published_at=T0), T0)
+    out = md(e, "O dronă a fost semnalată în spațiul aerian al R. Moldova", mins(5))
+    assert all(x.kind != "apropiere" for x in out)
+
+
+def test_bucovina_towns_alone_give_direction_and_adverb_glyboko_does_not():
+    for text, place in (("БпЛА курсом на Вижницю", "Vijnița"), ("Шахед біля Глибокої", "Hliboca"),
+                        ("БпЛА курсом на Сторожинець", "Storojineț")):
+        out = ne_eng().process(Signal(source="tg:x", role="ua_direction", text=text, received_at=T0, published_at=T0), T0)
+        assert [x.kind for x in out] == ["directie"] and place in out[0].text and "Suceava" in out[0].text
+    deep = ne_eng().process(Signal(source="tg:x", role="ua_direction", text="Шахеди глибоко в тилу, курсом на захід",
+                                   received_at=T0, published_at=T0), T0)
+    assert all("Hliboca" not in x.text for x in deep)
+
+
+def test_vigilance_deep_ukraine_areas_do_not_produce_updates_with_ne_targets():
+    e = ne_eng()
+    assert len(alert_state(e, "Березівський район")) == 1
+    # Bilhorod (207 km de Vaslui, 236 de Iași) după Berezivka: nu e „mai aproape”
+    st = {"active": [{"title": "Березівський район", "type": "raion", "oblast": "Одеська область"},
+                     {"title": "Білгород-Дністровський район", "type": "raion", "oblast": "Одеська область"}]}
+    assert e.process(Signal(source="alerts_in_ua", role="ua_alert_state", text="", received_at=mins(30), meta=st), mins(30)) == []
+    # Vinnytsia (212 km de Botoșani) după Podilsk: nu e o „direcție nouă”
+    e2 = ne_eng()
+    alert_state(e2, "Подільський район")
+    st = {"active": [{"title": "Подільський район", "type": "raion", "oblast": "Одеська область"},
+                     {"title": "Вінницька область", "type": "oblast", "oblast": "Вінницька область"}]}
+    out = e2.process(Signal(source="alerts_in_ua", role="ua_alert_state", text="", received_at=mins(30), meta=st), mins(30))
+    assert all("direcție nouă" not in x.text for x in out)
+
+
+def test_restart_after_target_list_change_does_not_resend_as_closer(tmp_path):
+    from veghe.store import Store
+
+    st = Store(str(tmp_path / "v.db"))
+    old = Engine(EngineConfig(watch_oblasts=[], watch_raions=[], targets=[geo.IASI]), st)   # versiunea veche: doar Iași
+    text = "O dronă a fost observată în raionul Edineț, la Goleni, spre vest"
+    assert [x.kind for x in md(old, text, T0)] == ["apropiere"]       # 114 km de Iași
+    new = ne_eng(st)
+    new._restore_hyps(mins(20))
+    # aceeași poziție, repostată: 67 km de Botoșani nu e „mai aproape” decât 114 km de Iași
+    assert md(new, text, mins(20)) == []
+
+
+def test_notam_near_bacau_names_the_city_survives_restart_and_shows_in_status(tmp_path):
+    from veghe import timeutil
+    from veghe.store import Store
+
+    st = Store(str(tmp_path / "v.db"))
+    e = ne_eng(st)
+    m = notam_meta(id="F8200/26", key="LR:F8200/26", lat=46.6, lon=26.95, radius_nm=3)   # ~4 km de Bacău
+    s = nsig(m)
+    st.add_signal(s)
+    out = e.process(s, T0)
+    assert len(out) == 1 and "lângă Bacău (~" in out[0].text
+    assert e.status(T0)["notam_active"][0]["aproape"] and "Bacău" in e.status(T0)["tinte"]
+    orig = timeutil.now
+    timeutil.now = lambda: mins(30)
+    try:
+        e2 = ne_eng(st)                                                # repornire: near_tinta se recalculează
+    finally:
+        timeutil.now = orig
+    cancel = notam_meta(id="F8201/26", key="LR:F8201/26", kind="anulare", ends="F8200/26", ends_key="LR:F8200/26",
+                        lat=None, lon=None, radius_nm=None)
+    assert any("NOTAM ANULAT" in x.text and "F8200/26" in x.text for x in e2.process(nsig(cancel), mins(40)))
+
+
+def test_target_names_with_diacritics_and_status_text():
+    assert [p.name for p in app._targets(["Piatra Neamț", "piatra-neamt", "Neamț"])] == ["Piatra Neamț"] * 3
+
+
+def test_vigilance_restart_after_target_list_change_is_silent(tmp_path):
+    from veghe.store import Store
+
+    st = Store(str(tmp_path / "v.db"))
+    old = Engine(EngineConfig(watch_oblasts=[], watch_raions=["Чернівецький район"], targets=[geo.IASI]), st)
+    assert len(alert_state(old, "Чернівецький район")) == 1          # 177 km de Iași
+    new = ne_eng(st)
+    new._restore_vigilance(mins(25))
+    # aceeași alertă, după pauză: 75 km de Suceava nu înseamnă „s-a extins mai aproape”
+    assert alert_state(new, "Чернівецький район", mins(25)) == []

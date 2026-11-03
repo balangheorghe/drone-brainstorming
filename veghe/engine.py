@@ -2,7 +2,7 @@
 
 Niveluri (docs/07): VIGILENȚĂ (alertă UA în zonele urmărite) → DIRECȚIE (mesaj UA despre
 drone spre Moldova/zonele de graniță) → MOLDOVA (detecție anunțată în R. Moldova) →
-APROPIERE (poziție la ≤ approach_km de Iași, spre vest). Separat: OFICIAL (RO-Alert raportat).
+APROPIERE (poziție la ≤ approach_km de cel mai apropiat oraș urmărit, spre vest). Separat: OFICIAL (RO-Alert raportat).
 
 Reguli de siguranță „prin construcție”:
 - mesajele PUBLICE se creează doar din semnale cu rol în PUBLIC_SOURCE_ROLES
@@ -84,9 +84,9 @@ def is_new_drone(text: str) -> bool:
     return new_drone_kind(text) > 0
 
 
-# Locuri din UA relevante (vestul reg. Odesa, Vinnytsia de lângă MD, Cernăuți)
+# Locuri din UA relevante (vestul reg. Odesa, Vinnytsia de lângă MD, Cernăuți și nordul Bucovinei)
 UA_WATCH_KEYS = {"podilsk", "rozdilna", "izmail", "reni", "bolhrad", "bilhorod", "vylkove", "kiliia", "mohyliv",
-                 "tulchyn", "chernivtsi", "novodnistrovsk", "vinnytsia"}
+                 "tulchyn", "chernivtsi", "novodnistrovsk", "vinnytsia", "vyzhnytsia", "storozhynets", "hlyboka"}
 PRUT_EDGE_KEYS = {"ungheni", "sculeni", "zagarancea", "lipcani", "giurgiulesti", "leova", "cahul", "briceni"}
 NEWS_ROLES = {"md_news", "md_official", "ro_official_news"}
 
@@ -314,15 +314,16 @@ class Engine:
         near = min(pts, key=lambda p: self._tdist(p)[0]) if pts else None
         near_km, near_t = self._tdist(near) if near else (None, self.cfg.target)
         quiet = self.vigilance_msg_at is not None and now - self.vigilance_msg_at < dt.timedelta(minutes=self.cfg.vigilance_quiet_min)
-        closer = (near_km is not None and self.vigilance_best_km is not None and near_km <= self.vigilance_best_km - 15)
         # o direcție nouă (zonă la ≥ 60 km de toate cele anunțate) sau zonele anunțate nu mai sunt în alertă
         known = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
-        # doar zone care nu sunt (mult) mai departe de Iași decât cea mai apropiată anunțată
         # Bilhorod, Berezivka, Odesa, Vinnytsia: adânc în UA, nu o direcție nouă. Măsurat față de ținta
         # principală (Iași), nu de cea mai apropiată: cu Botoșani/Vaslui ca ținte, Vinnytsia (212 km) și
         # Bilhorod (207 km) ar intra sub prag și ar da „direcție nouă” la fiecare alertă de acolo.
         lim = 230.0
         rel = [p for p in pts if geo.dist(p, self.cfg.target) <= lim]
+        # „mai aproape” tot doar printre zonele relevante (Bilhorod după Berezivka nu e o apropiere de Vaslui)
+        near_rel_km, near_rel_t = min((self._tdist(p) for p in rel), key=lambda x: x[0]) if rel else (None, None)
+        closer = near_rel_km is not None and self.vigilance_best_km is not None and near_rel_km <= self.vigilance_best_km - 15
         new_axis = bool(known) and any(min(geo.dist(p, q) for q in known) >= 60 for p in rel)
         moved = bool(self.vigilance_areas) and bool(rel) and not ({p.key for p in pts} & self.vigilance_areas)
         if not self.vigilance_announced or ((closer or new_axis or moved) and not quiet):
@@ -333,7 +334,7 @@ class Engine:
             threat = " Tip amenințare raportat: drone." if self._drone_threat() else ""
             upd = ""
             if self.vigilance_announced:
-                upd = (f" Alerta s-a extins mai aproape de {near_t.name}." if closer else
+                upd = (f" Alerta s-a extins mai aproape de {near_rel_t.name}." if closer else
                        " Alertă pe o direcție nouă." if new_axis else " Alerta s-a mutat în altă zonă.")
             text = (f"[INTERN] VIGILENȚĂ · {hhmm(now)}. Alertă aeriană activă în: {', '.join(sorted(active))}.{upd}{threat}{eta}"
                     f"{self._adsb_note(now)} Stare internă, nespecifică (filtrul e activ ~20% din timp). Nicio acțiune publică.")
@@ -379,6 +380,11 @@ class Engine:
         self.vigilance_best_km = st.get("best_km")
         self.vigilance_titles = set(st.get("titles") or [])
         self.vigilance_areas = set(st.get("areas") or [])
+        # distanța salvată poate fi față de altă listă de ținte (config schimbat între porniri): o recalculăm
+        # din zonele anunțate (cu aceleași ținte rezultă aceeași valoare)
+        pts = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
+        if pts:
+            self.vigilance_best_km = min(self._tdist(p)[0] for p in pts)
         for k, v in (st.get("tg") or {}).items():
             ts = parse_iso(v)
             if ts and t - ts <= dt.timedelta(minutes=self.cfg.tg_alert_ttl_min):
@@ -437,7 +443,7 @@ class Engine:
         d_km, near_t = self._tdist(place) if place else (None, self.cfg.target)
         level_up = h.level > h.notified
         near_level = h.level >= Level.APROPIERE
-        step = 10 if near_level else 25            # km mai aproape de Iași decât ce a văzut grupul ultima dată
+        step = 10 if near_level else 25            # km mai aproape de cel mai apropiat oraș urmărit decât ultima dată
         first_fix = d_km is not None and h.last_msg_km is None           # prima poziție cunoscută
         closer = d_km is not None and h.last_msg_km is not None and d_km <= h.last_msg_km - step
         recent = h.last_msg_at is not None and now - h.last_msg_at < dt.timedelta(minutes=10)
@@ -527,7 +533,14 @@ class Engine:
             return False
         if h.place.key in PRUT_EDGE_KEYS:
             return True
-        west = h.place.lon < 28.65 or f.westward or any(p.country == "RO" for p in f.direction_to)
+        to_ro = any(p.country == "RO" for p in f.direction_to)
+        if f.lost_or_left and f.toward_ua and not f.westward and not to_ro:
+            # a părăsit R. Moldova spre Ucraina (ex. pe la Otaci): se îndepărtează. Doar cu „a părăsit”:
+            # „drone lansate spre Ucraina au intrat în R. Moldova” rămâne o posibilă apropiere
+            return False
+        # longitudinea spune „vest” doar pentru R. Moldova / România; o poziție din UA (Cernăuți, Mohyliv)
+        # nu devine apropiere fără o direcție spre vest în text
+        west = (h.place.country != "UA" and h.place.lon < 28.65) or f.westward or to_ro
         return self._tdist(h.place)[0] <= self.cfg.approach_km and west
 
     def _moldova(self, sig, f, now) -> list[Message]:
@@ -919,6 +932,7 @@ class Engine:
             key = m.get("key") or m.get("id")
             # prima pornire după actualizare (fără listă salvată): le considerăm anunțate, fără rafală
             m["_anuntat"] = True if announced is None else key in announced
+            self._notam_mark(m)
             self._notam_apply(m)
         self._notam_expire(t, announce=False)
         self._save_announced()
@@ -953,7 +967,7 @@ class Engine:
 
     @staticmethod
     def _notam_relevant(m: dict) -> bool:
-        """Doar ce poate însemna un incident: închiderea spațiului aerian lângă Iași/Prut, închiderea unui
+        """Doar ce poate însemna un incident: închiderea spațiului aerian lângă un oraș urmărit sau Prut, închiderea unui
         aeroport urmărit sau orice restricție în spațiul aerian al R. Moldova (rare acolo, legate de incidente).
         Zborurile planificate de drone, zonele restricționate de rutină (lunare, activări militare) și
         avertizările GNSS rămân doar context (/stare), fără mesaje."""
@@ -962,13 +976,25 @@ class Engine:
                     or (cat == "aeroport_inchis" and locs & {"LRIA", "LUKK", "LUBL", "LRSV", "LRBC"})
                     or (cat == "restrictie_spatiu_aerian" and fir == "LUUU"))
 
-    def _notam_near_targets(self, m: dict) -> bool:
-        """NOTAM la ≤ 60 km (minus raza zonei) de o țintă secundară (ex. Suceava); Iașul e calculat de colector."""
+    def _notam_mark(self, m: dict) -> dict:
+        """NOTAM la ≤ 60 km (minus raza zonei) de o țintă în afară de Iași (ex. Bacău, Suceava): near_tinta,
+        tinta, dist_tinta_km. Iașul și Prutul sunt calculate de colector („near”). Se recalculează și la
+        repornire (arhiva nu are câmpul, iar lista de ținte se poate schimba)."""
         lat, lon, r = m.get("lat"), m.get("lon"), m.get("radius_nm")
-        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)) or (isinstance(r, (int, float)) and r > 100):
-            return False
-        rad = (r or 0) * 1.852
-        return any(geo.haversine_km(lat, lon, t.lat, t.lon) - rad <= 60 for t in self.targets if t is not self.cfg.target)
+        best = None
+        coarse = isinstance(r, (int, float)) and r > 100  # cerc Q prea mare: distanța nu spune nimic
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not coarse:
+            rad = (r if isinstance(r, (int, float)) else 0) * 1.852
+            for t in self.targets:
+                if t is self.cfg.target:
+                    continue
+                d = max(0.0, geo.haversine_km(lat, lon, t.lat, t.lon) - rad)
+                if d <= 60 and (best is None or d < best[0]):
+                    best = (d, t)
+        m["near_tinta"] = best is not None
+        m["tinta"] = best[1].name if best else None
+        m["dist_tinta_km"] = round(best[0]) if best else None
+        return m
 
     def _notam_eligible(self, m: dict, now: dt.datetime) -> str | None:
         """„acum”, „viitor” (va fi eligibil) sau None."""
@@ -985,7 +1011,7 @@ class Engine:
 
     def _notam(self, sig, now) -> list[Message]:
         m = dict(sig.meta or {})
-        m["near_tinta"] = self._notam_near_targets(m)
+        self._notam_mark(m)
         m["_text"] = sig.text
         m.pop("_anuntat", None)
         kind = m.get("kind")
@@ -1023,12 +1049,17 @@ class Engine:
             m["_anuntat"] = True
         self._save_announced()
         md = [m for m in items if m.get("category") == "spatiu_aerian_inchis" and m.get("fir") == "LUUU"]
-        body = items[0]["_text"] if len(items) == 1 else "\n• " + "\n• ".join(m["_text"] for m in items)
+        def line(m):  # zonele de lângă alt oraș decât Iași: textul colectorului dă doar distanța până la Iași
+            if m.get("near_tinta") and not m.get("near") and m.get("tinta"):
+                return f"lângă {m['tinta']} (~{m.get('dist_tinta_km')} km): {m['_text']}"
+            return m["_text"]
+
+        body = line(items[0]) if len(items) == 1 else "\n• " + "\n• ".join(line(m) for m in items)
         if md:
             head = (f"[INTERN] ATENȚIE · {hhmm(now)} · NOTAM R. Moldova: spațiu aerian închis. De obicei înseamnă "
                     f"drone detectate în R. Moldova; urmăriți sursele MD. ")
         else:
-            head = f"[INTERN] NOTAM · {hhmm(now)} · " + (f"{len(items)} NOTAM noi lângă Iași/Prut: " if len(items) > 1 else "")
+            head = f"[INTERN] NOTAM · {hhmm(now)} · " + (f"{len(items)} NOTAM noi lângă orașele urmărite / Prut: " if len(items) > 1 else "")
         return [Message("internal", "notam", f"{head}{body}\nContext oficial, nu confirmă o dronă. Nicio acțiune publică.",
                         Level.FOND)]
 
@@ -1157,6 +1188,10 @@ class Engine:
                                status_sent=set(d.get("status_sent") or []), reported=dict(d.get("reported") or {}),
                                reported_at={k: parse_iso(v) for k, v in (d.get("reported_at") or {}).items() if parse_iso(v)})
                 h.origin = [geo.BY_KEY[k] for k in d.get("origin") or [] if k in geo.BY_KEY]
+                # distanțele salvate pot fi față de altă listă de ținte: le recalculăm față de cea actuală
+                h.reported = {k: (self._tdist(geo.BY_KEY[k])[0] if k in geo.BY_KEY else v) for k, v in h.reported.items()}
+                if h.last_msg_km is not None and h.last_msg_place in geo.BY_KEY:
+                    h.last_msg_km = self._tdist(geo.BY_KEY[h.last_msg_place])[0]
                 pd = d.get("pending")
                 if isinstance(pd, dict):
                     rec = parse_iso(pd.get("received_at")) or upd
@@ -1229,5 +1264,6 @@ class Engine:
                         if self.military and self.military_at and now - self.military_at <= dt.timedelta(minutes=5) else None),
             "notam_active": [{"id": m.get("id"), "categorie": NOTAM_CAT_RO.get(m.get("category"), m.get("category")),
                               "fir": m.get("fir"), "pana_la": hhmm(parse_iso(m["end"])) if m.get("end") else "permanent",
-                              "aproape": bool(m.get("near"))} for m in self.notam_active.values()],
+                              "aproape": bool(m.get("near") or m.get("near_tinta"))} for m in self.notam_active.values()],
+            "tinte": [t.name for t in self.targets],
         }

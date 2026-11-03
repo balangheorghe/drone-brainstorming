@@ -70,6 +70,11 @@ DIRECTION = re.compile(
 )
 ADMIN_CONT = re.compile(r",\s*((?:raionul|r\.|regiunea|районі?|район\w*|област\w*)\s+[^\.,;:!\n]{0,40})")
 ORIGIN = re.compile(r"(?<!\w)(?:dinspre|з боку|со стороны|from)\s+([^\.,;:!\n]{0,60})")
+# plecare spre Ucraina: drona se îndepărtează de România (ex. „a părăsit spațiul aerian pe la Otaci, revenind în Ucraina”)
+TOWARD_UA = _rx([r"(?:spre|catre|inapoi (?:in|spre)|revenind (?:in|spre)|s-a intors (?:in|spre)|a revenit (?:in|spre)|"
+                 r"in directia|cu directia|in spatiul aerian al) (?:spatiul aerian (?:al )?)?ucrain",
+                 r"в (?:сторону|направлении) украин", r"вернул\w* в украин", r"повернул\w* (?:в|до) україн",
+                 r"у напрямку україн", r"в напрямку україн"])
 WESTWARD = _rx([r"на захід", r"західн\w* напрям", r"на запад", r"spre vest", r"directia vest", r"nord-vest", r"sud-vest",
                  r"північн\w*[ -]захід", r"північно-західн", r"південн\w*[ -]захід", r"південно-західн",
                  r"северо-запад", r"юго-запад", r"западн\w* направлен", r"westward", r"north-?west", r"south-?west"])
@@ -120,6 +125,7 @@ class Finding:
     mentions_moldova: bool = False
     mentions_romania: bool = False
     westward: bool = False
+    toward_ua: bool = False
     places: list[geo.Place] = field(default_factory=list)
     direction_to: list[geo.Place] = field(default_factory=list)
     origin: list[geo.Place] = field(default_factory=list)
@@ -154,6 +160,7 @@ def analyze(text: str) -> Finding:
     f.mentions_moldova = bool(MOLDOVA.search(n))
     f.mentions_romania = bool(ROMANIA.search(n))
     f.westward = bool(WESTWARD.search(n))
+    f.toward_ua = bool(TOWARD_UA.search(n)) and not f.mentions_romania
     f.places = find_places(n)
     for m in DIRECTION.finditer(n):
         tail = m.group(1)
