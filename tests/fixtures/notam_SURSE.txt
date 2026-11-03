@@ -1,0 +1,60 @@
+Proveniența fixturilor NOTAM (tests/fixtures/notam_*)
+=====================================================
+
+Conținutul NOTAM-urilor este informație aeronautică publică (ROMATSA, FAA, ICAO).
+Înregistrările sunt copiate VERBATIM din capturile de mai jos; s-au păstrat doar câte
+trebuie testelor. Înregistrările cu nume și telefoane ale unor persoane private
+(ex. J0019/26 din notam-whisper) au fost lăsate deliberat pe dinafară.
+
+notam_romatsa_wfs.json
+  Format: răspunsul GeoServer ROMATSA, WFS 1.0.0 GetFeature, outputFormat=application/json,
+  strat carto:restrictii_notam_pt_uav (FeatureCollection; proprietăți serie, dfrom, dto, mesaj, tip;
+  geometrie Polygon [lon, lat], EPSG:4326).
+  - primul feature (C8116/25, captură 2025-07-18T15:42Z):
+    https://raw.githubusercontent.com/abpaul/romatsa-uav-zones/HEAD/test/fixtures/notam-sample.json
+    licență: MIT (c) 2026 Paul Badarau
+  - restul de 10 (P2578/26, P2580/26, P2581/26, F8015/26, F8008/26, M4430/26, P2397/26, P2738/26,
+    F8021/26, P2263/26; captură 2026-08-03T12:26Z, 187 de feature-uri în original):
+    https://raw.githubusercontent.com/TechReckoning/Drones-Restricted-Zones-RO/HEAD/data/notams.snapshot.json
+    depozitul nu are fișier de licență; datele sunt ale ROMATSA.
+  Modificări: doar învelișul (totalFeatures/numberMatched/numberReturned = 11, timeStamp și crs
+  din captura 2026). Feature-urile sunt neschimbate.
+
+notam_nms_geojson.json
+  Format: răspunsul FAA NMS-API GET /nmsapi/v1/notams cu antetul nmsResponseFormat: GEOJSON,
+  învelișul {"status": "Success", "data": {"geojson": [...]}} după clientul
+  https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/seed-notam-nms.mjs
+  (getNotamJson: body.status === 'Success', body.data.geojson).
+  Înregistrările (danger_radius EGNV, airport_future LSZH, not_avbl_as_altn OERK, cancel_notam FDC)
+  sunt din https://raw.githubusercontent.com/koala73/worldmonitor/main/tests/fixtures/nms-notam-geojson.json
+  („NMS-API staging, GEOJSON classification files, notamTranslation stripped”, captură 2026-10-24).
+  Licența depozitului: AGPL-3.0 (datele în sine sunt NOTAM-uri FAA/ICAO). De revăzut de integrator.
+
+notam_text_list.txt
+  - P2580/26: câmpul „mesaj” din captura ROMATSA de mai sus (\r înlocuit cu rând nou).
+  - A4460/24, G0105/26, A1484/26, A5862/25, J0249/26, A1136/25, B1216/26: coloana „raw” din
+    https://raw.githubusercontent.com/lzq1206/notam-whisper/HEAD/history/notams/2026-W29.csv
+    (NOTAM-uri FAA/notammap.org cu rândurile aplatizate în spații duble; licența depozitului: GPL-3.0).
+
+notam_wfs_exception.xml
+  CONSTRUIT (nu e o captură): urmează exact șablonul din GeoServer
+  WfsExceptionHandler.handle1_0 (răspuns text/xml la o eroare WFS 1.0.0),
+  https://raw.githubusercontent.com/geoserver/geoserver/main/src/wfs-core/src/main/java/org/geoserver/wfs/response/WfsExceptionHandler.java
+  Textul mesajului e ilustrativ.
+
+NOTAM-uri SINTETICE
+  Nu există niciun NOTAM LUUU (R. Moldova) verbatim în sursele găsite. Exemplele LUUU din
+  tests/test_notam.py sunt construite după formatul ICAO și marcate „# SINTETIC”.
+  Alte NOTAM-uri verbatim folosite direct în test (A3475/22, A3230/26, A0001/26, P4594/26,
+  A1111/25, M1128/26, F0910/26) sunt din https://raw.githubusercontent.com/avwx-rest/avwx-engine/main/tests/current/test_notam.py
+  și .../tests/current/data/notam_parse_cases.json (licență MIT).
+
+NOTAM-uri SINTETICE adăugate la revizie (tests/test_notam.py, secțiunea „regresii”)
+  - nms_feature(…): Feature-uri FAA NMS construite cu exact câmpurile din worldmonitor
+    (number, type, affectedFir, selectionCode, icaoLocation, effectiveStart/End, radius,
+    cancelationDate); doar conținutul e inventat (două NOTAM-uri A0123/26, LUUU și LRBB,
+    pentru coliziunea de numere între birouri NOTAM diferite).
+  - NOTAM-uri ICAO scurte pentru clasificare (QPIAU RNAV (GNSS), QGWAU, QFAAH, QAFLT,
+    QFALC LRIA) și pentru curățarea identităților/telefoanelor: construite după formatul
+    ICAO din avwx-engine și NOTAM-urile reale de mai sus; înmatriculările și numerele de
+    telefon din ele sunt inventate.

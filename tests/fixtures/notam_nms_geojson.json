@@ -1,0 +1,180 @@
+{
+ "status": "Success",
+ "data": {
+  "geojson": [
+   {
+    "type": "Feature",
+    "properties": {
+     "coreNOTAMData": {
+      "notamEvent": {
+       "scenario": "982"
+      },
+      "notam": {
+       "id": "NMS_ID_1790250196727000",
+       "series": "J",
+       "number": "J3386/26",
+       "year": "2026",
+       "type": "R",
+       "issued": "2026-09-24T11:42:00.000Z",
+       "affectedFir": "EGTT",
+       "selectionCode": "QRDCS",
+       "traffic": "IV",
+       "purpose": "BO ",
+       "scope": "AW",
+       "minimumFl": "000",
+       "maximumFl": "999",
+       "location": "EGNV",
+       "effectiveStart": "2026-09-24T11:17:00.000Z",
+       "effectiveEnd": "2026-11-01T00:59:00.000Z",
+       "text": "TEMPO DANGER AREA (TDA) EGD494B INSTALLED WI 1.61NM RADIUS OF\r\n543357N 0011839W (STOCKTON-ON-TEES). BEYOND VISUAL LINE OF SIGHT\r\n(BVLOS) UAS OPS CONTAINED WHOLLY WI THE TDA. MAX HGT 400FT AGL.\r\nEMERG SERVICES ACFT MAY ENTER THE AIRSPACE IN ACCORDANCE WITH\r\nLOCAL DECONFLICTION AGREEMENTS. OPEN AND SPECIFIC CAT VISUAL LINE OF\r\nSIGHT (VLOS) UAS OPS ARE PERMITTED WI THE TDA WITHOUT PRIOR APPROVAL \r\nOR DECONFLICTION. OTHER NON-STANDARD FLIGHT, FLIGHT RESTRICTION ZONE \r\nOR CONTROLLED AIRSPACE APPROVALS MUST BE OBTAINED. OPERATORS ARE \r\nREMINDED OF THEIR RESPONSIBILITY UNDER CAP722 5.2.2.3 REGARDING OPR \r\nIN CLOSE PROXIMITY TO AN EMERG RESPONSE EFFORT. FOR INFO \r\nAROPS(AT)CAA.CO.UK. AR-2026-187/11.",
+       "classification": "INTL",
+       "accountId": "EGGNYNYX",
+       "lastUpdated": "2026-09-24T11:43:00.000Z",
+       "icaoLocation": "EGNV",
+       "schedule": "SEP 24-OCT 24 0600-2359, OCT 25-31 0700-0059",
+       "lowerLimit": "SFC",
+       "upperLimit": "600FT AMSL",
+       "coordinates": "5434N00119W",
+       "radius": "2"
+      }
+     }
+    },
+    "geometry": {
+     "type": "GeometryCollection",
+     "geometries": [
+      {
+       "type": "Point",
+       "coordinates": [
+        -1.429444,
+        54.509167
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "type": "Feature",
+    "properties": {
+     "coreNOTAMData": {
+      "notamEvent": {
+       "scenario": "982"
+      },
+      "notam": {
+       "id": "NMS_ID_1790839523060000",
+       "series": "A",
+       "number": "A0634/26",
+       "year": "2026",
+       "type": "N",
+       "issued": "2026-10-01T07:25:00.000Z",
+       "affectedFir": "LSAS",
+       "selectionCode": "QFALC",
+       "traffic": "IV",
+       "purpose": "NBO",
+       "scope": "A",
+       "minimumFl": "000",
+       "maximumFl": "999",
+       "location": "LSZH",
+       "effectiveStart": "2026-10-26T22:00:00.000Z",
+       "effectiveEnd": "2026-10-27T05:00:00.000Z",
+       "text": "AD CLSD DUE TO WIP AFT LAST SKED FLT.\r\nACTUAL CLOSURE BCST ON ATIS.)",
+       "classification": "INTL",
+       "accountId": "LSSNYNYX",
+       "lastUpdated": "2026-10-01T07:25:00.000Z",
+       "icaoLocation": "LSZH",
+       "coordinates": "4727N00833E",
+       "radius": "5"
+      }
+     }
+    },
+    "geometry": {
+     "type": "GeometryCollection",
+     "geometries": [
+      {
+       "type": "Point",
+       "coordinates": [
+        8.548056,
+        47.458056
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "type": "Feature",
+    "properties": {
+     "coreNOTAMData": {
+      "notamEvent": {
+       "scenario": "6000"
+      },
+      "notam": {
+       "id": "NMS_ID_1792263016156101",
+       "series": "A",
+       "number": "A3651/26",
+       "year": "2026",
+       "type": "R",
+       "issued": "2026-10-17T18:49:00Z",
+       "affectedFir": "OEJD",
+       "selectionCode": "QFALT",
+       "traffic": "IV",
+       "purpose": "NBO",
+       "scope": "A",
+       "minimumFl": "000",
+       "maximumFl": "999",
+       "location": "OERK",
+       "effectiveStart": "2026-10-17T18:47:00Z",
+       "effectiveEnd": "PERM",
+       "text": "AD NOT AVBL AS ALTN AD.",
+       "classification": "INTL",
+       "accountId": "OEJDYNYX",
+       "lastUpdated": "2026-10-17T18:49:00Z",
+       "icaoLocation": "OERK",
+       "coordinates": "2458N04642E",
+       "radius": "005"
+      }
+     }
+    },
+    "geometry": {
+     "type": "GeometryCollection",
+     "geometries": [
+      {
+       "type": "Point",
+       "coordinates": [
+        46.708056,
+        24.962778
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "type": "Feature",
+    "properties": {
+     "coreNOTAMData": {
+      "notamEvent": {
+       "scenario": "106"
+      },
+      "notam": {
+       "id": "NMS_ID_1792791011922806",
+       "number": "6/1966",
+       "year": "2026",
+       "type": "C",
+       "issued": "2026-10-23T21:29:00Z",
+       "location": "FDC",
+       "effectiveStart": "2026-10-23T21:29:00Z",
+       "effectiveEnd": "2026-10-26T21:29:00Z",
+       "text": "FDC 6/1966 NOTAMC 6/1966\nA) STJ",
+       "classification": "FDC",
+       "accountId": "FDC",
+       "lastUpdated": "2026-10-23T21:29:00Z",
+       "icaoLocation": "KFDC"
+      }
+     }
+    },
+    "geometry": {
+     "type": "GeometryCollection",
+     "geometries": []
+    }
+   }
+  ]
+ }
+}

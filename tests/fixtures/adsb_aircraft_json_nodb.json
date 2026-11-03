@@ -1,0 +1,9 @@
+{ "now" : 1793546700.100,
+  "messages" : 48210337,
+  "aircraft" : [
+    {"hex":"4a8d0b","type":"adsb_icao","flight":"ROT215  ","alt_baro":17000,"gs":265.1,"track":75.2,"squawk":"4630","emergency":"none","category":"A2","lat":47.250120,"lon":27.700340,"nic":8,"rc":186,"seen_pos":0.4,"version":2,"nac_p":10,"mlat":[],"tisb":[],"messages":5530,"seen":0.1,"rssi":-9.4},
+    {"hex":"3c4dd1","type":"adsb_icao","flight":"DLH3KE  ","alt_baro":24350,"gs":380.4,"track":215.0,"squawk":"7700","emergency":"general","category":"A3","lat":47.320100,"lon":27.780200,"nic":8,"rc":186,"seen_pos":0.6,"version":2,"nac_p":9,"mlat":[],"tisb":[],"messages":12877,"seen":0.2,"rssi":-16.4},
+    {"hex":"43c71a","type":"adsb_icao","flight":"ASCOT61 ","alt_baro":28000,"gs":410.0,"track":90.0,"squawk":"2000","category":"A5","lat":47.150000,"lon":27.400000,"nic":5,"rc":1852,"seen_pos":0.7,"version":2,"nac_p":4,"mlat":[],"tisb":[],"messages":3011,"seen":0.3,"rssi":-14.2},
+    {"hex":"471f8d","type":"adsb_icao","flight":"WZZ81WF ","alt_baro":36000,"gs":448.7,"track":262.0,"squawk":"6731","category":"A3","lat":47.250318,"lon":27.950977,"nic":5,"rc":1852,"seen_pos":2.4,"version":2,"nac_p":5,"mlat":[],"tisb":[],"messages":9921,"seen":0.9,"rssi":-21.0}
+  ]
+}

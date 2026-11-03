@@ -1,0 +1,13 @@
+{ "now" : 1793546700.100,
+  "messages" : 48210337,
+  "aircraft" : [
+    {"hex":"4a8d0b","type":"adsb_icao","flight":"ROT215  ","r":"YR-ATK","t":"AT76","alt_baro":17000,"alt_geom":17350,"gs":265.1,"track":75.2,"baro_rate":-704,"squawk":"4630","emergency":"none","category":"A2","lat":47.250120,"lon":27.700340,"nic":8,"rc":186,"seen_pos":0.4,"r_dst":5.282,"r_dir":32.4,"version":2,"nic_baro":1,"nac_p":10,"nac_v":2,"sil":3,"sil_type":"perhour","gva":2,"sda":2,"alert":0,"spi":0,"mlat":[],"tisb":[],"messages":5530,"seen":0.1,"rssi":-9.4},
+    {"hex":"4a81fa","type":"adsb_icao","flight":"ROT716  ","r":"YR-ASB","t":"A318","alt_baro":"ground","gs":0.0,"track":151.9,"category":"A3","lat":47.177900,"lon":27.619600,"nic":8,"rc":186,"seen_pos":4.2,"r_dst":0.950,"r_dir":271.0,"version":2,"nac_p":9,"mlat":[],"tisb":[],"messages":402,"seen":2.2,"rssi":-4.2},
+    {"hex":"50805c","type":"adsb_icao","flight":"FIA301  ","r":"ER-AXP","t":"A320","alt_baro":5200,"gs":201.0,"track":178.0,"squawk":"2702","category":"A3","lat":46.950880,"lon":28.850990,"nic":8,"rc":186,"seen_pos":0.9,"r_dst":52.104,"r_dir":105.3,"version":2,"nac_p":9,"mlat":[],"tisb":[],"messages":9113,"seen":0.5,"rssi":-24.6},
+    {"hex":"4a8c3d","type":"adsb_icao","flight":"BLA11   ","r":"YR-BMB","t":"B734","alt_baro":8600,"gs":250.0,"track":240.0,"squawk":"2706","category":"A3","lat":46.520400,"lon":26.910300,"nic":8,"rc":186,"seen_pos":1.4,"r_dst":48.720,"r_dir":215.8,"version":2,"nac_p":9,"mlat":[],"tisb":[],"messages":7140,"seen":0.9,"rssi":-25.9},
+    {"hex":"4a8e9f","type":"mode_s","r":"YR-DSB","t":"PC12","alt_baro":11000,"mlat":[],"tisb":[],"messages":18,"seen":12.4,"rssi":-29.3},
+    {"hex":"4bc8d1","type":"adsb_icao","flight":"PGT2YB  ","r":"TC-NCH","t":"A20N","alt_baro":36000,"gs":458.0,"track":266.0,"squawk":"3321","emergency":"none","category":"A3","version":2,"nic_baro":1,"sil":3,"sil_type":"perhour","gva":2,"sda":2,"lastPosition":{"lat":47.205300,"lon":27.810700,"nic":8,"rc":186,"seen_pos":70.2},"gpsOkBefore":1793546520.0,"gpsOkLat":47.201000,"gpsOkLon":27.880000,"mlat":[],"tisb":[],"messages":15004,"seen":0.6,"rssi":-15.5},
+    {"hex":"43c71a","type":"adsb_icao","flight":"ASCOT61 ","r":"ZZ504","t":"C17","dbFlags":1,"alt_baro":28000,"gs":410.0,"track":90.0,"squawk":"7700","emergency":"general","category":"A5","lat":47.150000,"lon":27.400000,"nic":8,"rc":186,"seen_pos":0.7,"r_dst":9.211,"r_dir":262.0,"version":2,"nac_p":9,"mlat":[],"tisb":[],"messages":3011,"seen":0.3,"rssi":-14.2},
+    {"hex":"4a8bd7","type":"adsb_icao","flight":"YRDSD   ","r":"YR-DSD","t":"P28A","alt_baro":4100,"gs":98.0,"category":"A1","lastPosition":{"lat":47.190100,"lon":27.590100,"nic":8,"rc":186,"seen_pos":259200.0},"mlat":[],"tisb":[],"messages":66,"seen":8.0,"rssi":-23.0}
+  ]
+}
