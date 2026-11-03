@@ -264,3 +264,38 @@ def test_repeat_end_without_new_alert_is_internal_only():
     assert {x.channel for x in first} == {"internal", "public"}
     again = ro("Alerta a încetat în județul Iași, recapitulare", 105, "https://a.ro/3")
     assert [x.channel for x in again] == ["internal"] and "din nou relatată" in again[0].text
+
+
+# ------------------------------------------------------------------ a treia verificare
+def test_repost_of_old_place_does_not_cancel_new_position():
+    e = eng()
+    assert md(e, m(0), "Dronă la Ungheni, spre vest") != []
+    assert md(e, m(5), "O dronă a fost detectată în raionul Hîncești") == []          # amânată (mai departe)
+    md(e, m(9), "Dronă la Ungheni, spre vest")                                         # repostare a locului vechi
+    sent = [x for k in range(10, 40) for x in e.tick(m(k))]
+    assert any("Hîncești" in x.text for x in sent)
+
+
+def test_sure_marker_reposts_reuse_the_same_hypothesis():
+    e = eng()
+    md(e, m(0), "Dronă la Ungheni, spre vest")
+    first = md(e, m(2), "Încă două drone au intrat în R. Moldova prin Ocnița")
+    assert len(first) == 1 and "H-2" in first[0].text
+    again = md(e, m(5), "Încă două drone au intrat în R. Moldova prin Ocnița, confirmă MApN")
+    assert again == []                                                                  # aceeași știre, altă sursă
+
+
+def test_old_all_clear_closes_restored_channel_alert(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    e.process(Signal(source="telegram:air_alert_ua", role="ua_alerts", received_at=t, published_at=t,
+                     text="🔴 Повітряна тривога в Подільський район"), t)
+    e2 = eng(st)
+    later = t + dt.timedelta(minutes=45)
+    off = Signal(source="telegram:air_alert_ua", role="ua_alerts", received_at=later,
+                 published_at=t + dt.timedelta(minutes=5), text="🟢 Відбій тривоги в Подільський район")
+    e2.process(off, later)
+    assert "Подільський район" not in e2.ua_tg_state

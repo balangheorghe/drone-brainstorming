@@ -47,17 +47,23 @@ NOTAM_CAT_RO = {
 
 # „încă un UAV”, „un nou aparat de zbor fără pilot”, „ще одна група БпЛА”, „another drone”, „a treia dronă” …
 _NEW_AMBIG = (r"a doua|al doilea|o noua|un nou|noi|inca o|inca un|o alta|un alt|alte|alti|a second|another|a new|new|more|"
-              r"другий|друга|другу|ще|нова|нову|нові|інша|іншу|інші|второй|вторая|вторую|еще|новая|новую|новые|другие")
+              r"другий|друга|другу|нова|нову|нові|інша|іншу|інші|второй|вторая|вторую|новая|новую|новые|другие|second|fourth")
 _NEW_SURE = (r"a treia|al treilea|a patra|al patrulea|inca (?:doua|trei|patru|\d+)|alte (?:doua|trei|\d+)|alti (?:doi|trei|\d+)|"
-             r"a third|(?:two|three|\d+) more|третій|третя|третю|третий|третья|третью|"
+             r"a third|third|(?:two|three|\d+) (?:more|new)|третій|третя|третю|третий|третья|третью|"
              r"ще (?:кілька|декілька|два|дві|три|\d+)|еще (?:несколько|два|две|три|\d+)")
 # după marcaj nu poate urma un cuvânt de știre („un nou incident cu o dronă” = o știre nouă, nu o dronă nouă)
 _NEWS_WORDS = (r"(?!(?:update|actualizar|informar|informati|mesaj|alert|comunicat|oara|zi\b|incident|caz|atac|episod|"
-               r"eveniment|інформац|повідомл|оновлен|информац|сообщен|одес|день|половин|раз\b))")
+               r"eveniment|data\b|detalii|imagini|video|foto|stiri|time\b|interview|інформац|повідомл|оновлен|информац|"
+               r"сообщен|одес|день|половин|раз\b))")
 _COUNT = r"(?:(?:кілька|декілька|несколько|\d+|два|дві|две|три|doua|trei)\s+)?"
-_NOUN = r"(?:dron|uav|aparat|obiect|tint|bpla|бпла|бпл|безпілот|беспилот|шахед|shahed|груп|group)"
-NEW_DRONE_RX = re.compile(r"(?<!\w)(?:" + _NEW_SURE + "|" + _NEW_AMBIG + r")\s+" + _NEWS_WORDS + _COUNT + r"(?:\S+\s+)??" + _NOUN)
-NEW_DRONE_SURE_RX = re.compile(r"(?<!\w)(?:" + _NEW_SURE + r")\s+" + _NEWS_WORDS + _COUNT + r"(?:\S+\s+)??" + _NOUN)
+_NOUN = r"(?:dron|uav|aparat|obiect|tint|bpla|бпла|бпл|безпілот|беспилот|шахед|shahed|груп|grup|group|хвил)"
+_SHCHE = r"(?:ще|еще)\s+(?:(?:один|одна|одну|одного)\s+(?:\S+\s+)??)?" + _NOUN  # „ще летить БпЛА” nu e o dronă nouă
+_AFTER = r"\w*+(?!\s+(?:incident|alert|case|news|update))"  # „another drone incident” = o știre, nu o dronă
+_MORE_POST = r"(?:doua|trei|patru|cateva|mai multe)\s+drone\s+noi"
+NEW_DRONE_RX = re.compile(r"(?<!\w)(?:(?:" + _NEW_SURE + "|" + _NEW_AMBIG + r")\s+" + _NEWS_WORDS + _COUNT + r"(?:\S+\s+)??"
+                          + _NOUN + _AFTER + "|" + _SHCHE + "|" + _MORE_POST + ")")
+NEW_DRONE_SURE_RX = re.compile(r"(?<!\w)(?:(?P<mk>" + _NEW_SURE + r")\s+" + _NEWS_WORDS + _COUNT + r"(?:\S+\s+)??" + _NOUN
+                               + _AFTER + "|(?P<mk2>" + _MORE_POST + "))")
 
 
 def new_drone_kind(text: str) -> int:
@@ -67,6 +73,11 @@ def new_drone_kind(text: str) -> int:
     if NEW_DRONE_SURE_RX.search(n):
         return 2
     return 1 if NEW_DRONE_RX.search(n) else 0
+
+
+def sure_marker(text: str) -> str:
+    m = NEW_DRONE_SURE_RX.search(normalize(text).replace("ё", "е"))
+    return (m.group("mk") or m.group("mk2") or "") if m else ""
 
 
 def is_new_drone(text: str) -> bool:
@@ -112,6 +123,7 @@ class Hypothesis:
     jet: bool = False
     official: bool = False
     from_new_marker: bool = False
+    sure_marker: str = ""
     notified: Level = Level.FOND
     last_msg_at: dt.datetime | None = None
     last_msg_place: str = ""
@@ -119,6 +131,7 @@ class Hypothesis:
     pending: tuple | None = None          # o apropiere amânată (trimisă din tick după pauză)
     status_sent: set = field(default_factory=set)  # vești trimise o singură dată (ex. „dispărut de pe radar”)
     reported: dict = field(default_factory=dict)   # loc anunțat → km de Iași
+    reported_at: dict = field(default_factory=dict)  # loc anunțat → ora ultimului anunț
     sources: list[str] = field(default_factory=list)
     closed: bool = False
 
@@ -293,8 +306,11 @@ class Engine:
         closer = (near_km is not None and self.vigilance_best_km is not None and near_km <= self.vigilance_best_km - 15)
         # o direcție nouă (zonă la ≥ 60 km de toate cele anunțate) sau zonele anunțate nu mai sunt în alertă
         known = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
-        new_axis = bool(known) and any(min(geo.dist(p, q) for q in known) >= 60 for p in pts)
-        moved = bool(self.vigilance_areas) and bool(pts) and not ({p.key for p in pts} & self.vigilance_areas)
+        # doar zone care nu sunt (mult) mai departe de Iași decât cea mai apropiată anunțată
+        lim = 230.0  # Bilhorod, Berezivka, Odesa, Vinnytsia: adânc în UA, nu o direcție nouă spre Iași
+        rel = [p for p in pts if geo.dist(p, self.cfg.target) <= lim]
+        new_axis = bool(known) and any(min(geo.dist(p, q) for q in known) >= 60 for p in rel)
+        moved = bool(self.vigilance_areas) and bool(rel) and not ({p.key for p in pts} & self.vigilance_areas)
         if not self.vigilance_announced or ((closer or new_axis or moved) and not quiet):
             eta = ""
             if near:
@@ -356,10 +372,10 @@ class Engine:
         # pauza începe de la ultima stare „fără alerte” salvată sau, altfel, de la repornire
         self.vigilance_inactive_since = parse_iso(st.get("inactive_since")) or t
 
-    def _tg_alert(self, sig: Signal, now) -> list[Message]:
+    def _tg_alert(self, sig: Signal, now, only_off: bool = False) -> list[Message]:
         # pe linii: normalize() ar transforma rândurile noi în spații și ar lipi rândul următor de localitate
         n = "\n".join(normalize(line) for line in sig.text.splitlines())
-        for rx, on in ((TG_OFF, False), (TG_ON, True)):
+        for rx, on in ((TG_OFF, False),) + (() if only_off else ((TG_ON, True),)):
             for m in rx.finditer(n):
                 for loc in re.split(r",| та | і ", m.group(1)):
                     title = self._watch_norm.get(loc.strip(" .:;"))
@@ -367,8 +383,8 @@ class Engine:
                         continue
                     if on:
                         self.ua_tg_state[title] = sig.when
-                    else:
-                        self.ua_tg_state.pop(title, None)
+                    elif title in self.ua_tg_state and sig.when >= self.ua_tg_state[title]:
+                        self.ua_tg_state.pop(title)  # o încetare veche nu poate șterge o alertă mai nouă
         msgs = self._update_vigilance(now)
         self._save_vigilance(now)
         return msgs
@@ -390,6 +406,15 @@ class Engine:
                 best = (key, h)
         return best[1] if best else None
 
+    def _match_sure(self, place, now, mk) -> Hypothesis | None:
+        """„încă două drone … Hîncești” repetat de alte publicații: aceeași ipoteză (același marcaj, același loc, ≤ 30 min)."""
+        for h in sorted(self.open_hyps(), key=lambda x: -x.created.timestamp()):
+            if h.sure_marker != mk or now - h.created > dt.timedelta(minutes=30):
+                continue
+            if place is None or h.place is None or place.key in h.reported or geo.dist(place, h.place) <= 25:
+                return h
+        return None
+
     def _hyp_message(self, h: Hypothesis, kind: str, sig: Signal, now, status: str | None = None,
                      place: geo.Place | None = None) -> list[Message]:
         """Când se (re)trimite mesajul unei ipoteze. `place` = poziția fixată a unei actualizări amânate."""
@@ -405,7 +430,13 @@ class Engine:
         # ultimul mesaj e vechi și poziția s-a schimbat (a doua dronă contopită, drona s-a întors);
         # în faza DIRECȚIE nu reanunțăm un loc deja anunțat (grupuri care se rotesc în jurul Izmailului)
         last_place_km = h.reported.get(h.last_msg_place)
-        stale = (h.last_msg_at is not None and now - h.last_msg_at >= dt.timedelta(minutes=15)
+        # un loc deja anunțat pentru această ipoteză, de curând (≤ 30 min) sau într-o știre mai veche decât
+        # ultimul mesaj: repostare întârziată, nu o veste nouă
+        ann = h.reported_at.get(place_key)
+        echo = bool(place_key) and place_key in h.reported and (
+            (ann is not None and now - ann <= dt.timedelta(minutes=30))
+            or (h.last_msg_at is not None and sig.when < h.last_msg_at))
+        stale = (not echo and h.last_msg_at is not None and now - h.last_msg_at >= dt.timedelta(minutes=15)
                  and bool(place_key) and place_key != h.last_msg_place
                  and (h.level > Level.DIRECTIE or place_key not in h.reported
                       or (last_place_km is not None and d_km is not None and d_km <= last_place_km - step)))
@@ -418,10 +449,11 @@ class Engine:
                 if not (cur and cur[3] and cur[2] is not None and geo.dist(cur[2], self.cfg.target) < d_km):
                     h.pending = (kind, sig, place, True)
             elif not (cur and cur[3]):
-                if place_key and place_key != h.last_msg_place:
+                cur_new = bool(cur) and cur[2] is not None and cur[2].key not in h.reported
+                if place_key and place_key != h.last_msg_place and not echo and not (cur_new and place_key in h.reported):
                     h.pending = (kind, sig, place, False)  # poziție nouă: o trimitem după 15 min dacă nu vine alta
-                elif place_key and place_key == h.last_msg_place:
-                    h.pending = None
+                elif place_key and place_key == h.last_msg_place and not cur_new:
+                    h.pending = None  # doar un loc deja anunțat; un loc nou rămâne de trimis
             return []  # aceeași dronă, fără apropiere reală: nu repetăm mesajul
         pos = self._eta_text(place) if place else "poziție nepublicată"
         jet = " (posibil cu reacție)" if h.jet else ""
@@ -446,6 +478,7 @@ class Engine:
         if d_km is not None:
             h.last_msg_km = d_km  # ce a văzut grupul ultima dată
             h.reported[place_key] = d_km
+            h.reported_at[place_key] = now
         return [Message("internal", kind, text, h.level, h.id, sig.role)]
 
     def _ua_direction(self, sig, f, now) -> list[Message]:
@@ -460,7 +493,11 @@ class Engine:
             return []
         place = cand[0] if cand else None
         nk = new_drone_kind(sig.text)
-        h = (None if nk == 2 else self._match_hyp(place, now, nk > 0)) or self._new_hyp(now, Level.DIRECTIE, nk > 0)
+        mk = sure_marker(sig.text) if nk == 2 else ""
+        h = (self._match_sure(place, now, mk) if nk == 2 else self._match_hyp(place, now, nk > 0))
+        if h is None:
+            h = self._new_hyp(now, Level.DIRECTIE, nk > 0)
+            h.sure_marker = mk
         h.level = max(h.level, Level.DIRECTIE)
         h.updated, h.jet = now, h.jet or f.jet
         if place:
@@ -492,7 +529,11 @@ class Engine:
         elif md or dir_md:
             place = min(md + dir_md, key=lambda p: geo.dist(p, self.cfg.target))
         nk = new_drone_kind(sig.text)
-        h = (None if nk == 2 else self._match_hyp(place, now, nk > 0)) or self._new_hyp(now, Level.MOLDOVA, nk > 0)
+        mk = sure_marker(sig.text) if nk == 2 else ""
+        h = (self._match_sure(place, now, mk) if nk == 2 else self._match_hyp(place, now, nk > 0))
+        if h is None:
+            h = self._new_hyp(now, Level.MOLDOVA, nk > 0)
+            h.sure_marker = mk
         h.level = max(h.level, Level.MOLDOVA)
         h.updated, h.jet = now, h.jet or f.jet
         if place:
@@ -1028,6 +1069,8 @@ class Engine:
             pub = now
         limit = self.cfg.max_age_news_min if sig.role in NEWS_ROLES else self.cfg.max_age_min
         if pub and now - pub > dt.timedelta(minutes=limit):
+            if sig.role == "ua_alerts":
+                return self._tg_alert(sig, now, only_off=True)  # o încetare veche tot închide o alertă restaurată
             return []  # arhivat, dar prea vechi ca să declanșeze ceva
         if sig.role == "ua_alerts":
             return self._tg_alert(sig, now)
@@ -1052,9 +1095,10 @@ class Engine:
             return
         hs = [{"id": h.id, "created": iso(h.created), "updated": iso(h.updated), "level": int(h.level),
                "place": h.place.key if h.place else None, "origin": [o.key for o in h.origin], "jet": h.jet,
-               "official": h.official, "new_marker": h.from_new_marker, "notified": int(h.notified),
+               "official": h.official, "new_marker": h.from_new_marker, "sure_marker": h.sure_marker, "notified": int(h.notified),
                "last_msg_at": iso(h.last_msg_at) if h.last_msg_at else None, "last_msg_place": h.last_msg_place,
                "last_msg_km": h.last_msg_km, "status_sent": sorted(h.status_sent), "reported": h.reported,
+               "reported_at": {k: iso(v) for k, v in h.reported_at.items()},
                "pending": ({"kind": h.pending[0], "place": h.pending[2].key if h.pending[2] else None, "closer": h.pending[3],
                             "source": h.pending[1].source, "role": h.pending[1].role, "text": h.pending[1].text,
                             "url": h.pending[1].url, "received_at": iso(h.pending[1].received_at),
@@ -1078,10 +1122,11 @@ class Engine:
                     continue
                 h = Hypothesis(id=int(d["id"]), created=parse_iso(d["created"]) or upd, updated=upd, level=Level(d["level"]),
                                place=geo.BY_KEY.get(d.get("place")), jet=bool(d.get("jet")),
-                               official=bool(d.get("official")), from_new_marker=bool(d.get("new_marker")),
+                               official=bool(d.get("official")), from_new_marker=bool(d.get("new_marker")), sure_marker=d.get("sure_marker") or "",
                                notified=Level(d.get("notified", 0)), last_msg_at=parse_iso(d.get("last_msg_at")),
                                last_msg_place=d.get("last_msg_place") or "", last_msg_km=d.get("last_msg_km"),
-                               status_sent=set(d.get("status_sent") or []), reported=dict(d.get("reported") or {}))
+                               status_sent=set(d.get("status_sent") or []), reported=dict(d.get("reported") or {}),
+                               reported_at={k: parse_iso(v) for k, v in (d.get("reported_at") or {}).items() if parse_iso(v)})
                 h.origin = [geo.BY_KEY[k] for k in d.get("origin") or [] if k in geo.BY_KEY]
                 pd = d.get("pending")
                 if isinstance(pd, dict):
