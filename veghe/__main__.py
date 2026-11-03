@@ -62,9 +62,12 @@ def cmd_check_sources(args):
         elif raw == 0 and "when:" in getattr(c, "url", ""):
             note = " (fluxul caută doar știrile recente; gol când nu e nimic nou)"
         print(f"✓ {c.name:28s} {len(sigs):3d} elemente · cel mai nou: {hhmm(newest) if newest else '-'}{note}")
+        for s in sigs:
+            if s.role == "adsb_militar":  # doar un număr: conținutul militar nu se afișează pe ecran
+                print(f"      · militar: {'date OK, ' + str(s.meta.get('n', 0)) + ' aeronave în zonă' if s.meta.get('ok') else 'date indisponibile'}")
         for err in (getattr(c, "last_errors", None) or [])[:4]:
             print(f"      ! {err}")
-        for s in sigs[-3:]:
+        for s in [x for x in sigs if x.role != "adsb_militar"][-3:]:
             extra = ""
             if s.role == "ua_alert_state":
                 extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}"

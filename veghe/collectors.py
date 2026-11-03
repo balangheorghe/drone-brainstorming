@@ -560,7 +560,11 @@ class Adsb(Collector):
             r["sursa_date"] = label
             r.setdefault("gnss", {})["baseline_ready"] = self.gnss_ready.get(p["name"], False)
             cov = r.get("coverage") or {}
-            if cov.get("ok") or cov.get("reason") not in ("sursa_indisponibila", "date_vechi"):
+            eff = int(r.get("civil_airborne", 0) or 0) + int(r.get("civil_gps_lost", 0) or 0)
+            reason = cov.get("reason")
+            # zona de control nu contează; „control_scazut” cu zero aeronave = probabil date goale peste tot
+            if not r["is_control"] and (cov.get("ok") or (reason not in ("sursa_indisponibila", "date_vechi")
+                                                          and not (reason == "control_scazut" and eff == 0))):
                 usable += 1
             text = f"{p['name']}: {r.get('civil_airborne', 0)} civile în aer"
             if not cov.get("ok", True):
@@ -582,7 +586,7 @@ class Adsb(Collector):
                               text=f"Militar (ADS-B public), {m['name']}: "
                                    + (adsb_military.describe(s) if s.get("ok") else "date indisponibile"),
                               ext_id=f"militar@{iso(now)}", meta=s))
-        if self.points and usable == 0:
+        if any(p["name"] != self.control_point for p in self.points) and usable == 0:
             # nicio zonă civilă cu date utilizabile: sursa e „oarbă” → eroare (SURSĂ CĂZUTĂ după 3 citiri)
             if errors:
                 raise errors[-1]

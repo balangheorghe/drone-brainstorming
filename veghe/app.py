@@ -309,6 +309,8 @@ class App:
             else:
                 self.errors[name] += 1
                 backoff = min(c.interval * (2 ** min(self.errors[name], 5)), 900)
+                if isinstance(err, C.AdsbNoData):
+                    backoff = min(backoff, max(2 * c.interval, 120))  # agregator „înghețat”: reîncercăm des
                 if isinstance(err, http.HttpError) and err.retry_after:
                     backoff = max(backoff, err.retry_after)
                 self.next_due[name] = mono + backoff
@@ -434,6 +436,7 @@ class App:
             lines.append("ADS-B: " + "; ".join(
                 f"{k} {v['trafic']} în aer" + (f", date: {v['acoperire']}" if v["acoperire"] != "ok" else "")
                 + (f", sursa: {v['sursa']}" if v.get("sursa") not in (None, "principal") else "")
+                + (f", date bune din {v['la_ok']}" if v.get("vechi") else "")
                 + (f", GNSS {v['gnss']}" if v.get("gnss") not in (None, "normal", "insuficient") else "")
                 + (f", {v['manevre']} în așteptare/întoarse" if v.get("manevre") else "") for k, v in zones.items()))
         if st.get("militar"):

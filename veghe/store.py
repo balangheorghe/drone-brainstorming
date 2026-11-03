@@ -92,6 +92,7 @@ class Store:
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.execute("PRAGMA secure_delete=ON")  # textele înlocuite nu rămân în paginile libere
             self._db.executescript(SCHEMA)
             for col in ("delivered TEXT DEFAULT ''", "next_attempt_at TEXT"):  # migrare pentru baze mai vechi
                 try:
@@ -243,7 +244,22 @@ class Store:
             # rezumatele militare nu se păstrează (de obicei sunt deja înlocuite la livrare)
             self._db.execute("UPDATE outbox SET text='[ADS-B militar – conținutul nu se păstrează]' "
                              "WHERE kind='adsb_militar' AND status!='queued' AND text NOT LIKE '[ADS-B militar%'")
+            self._db.execute("UPDATE events SET text='' WHERE kind='adsb_militar' AND text!=''")
+            rows = list(self._db.execute("SELECT id, kind, text FROM outbox WHERE status!='queued' AND text LIKE '%ADS-B militar (%'"))
             self._db.commit()
+        if rows:
+            from .notify import redact_military
+
+            for r in rows:
+                self.set_outbox(r["id"], text=redact_military(r["text"], r["kind"], ""))
+        self.checkpoint()
+
+    def checkpoint(self):
+        with self._lock:
+            try:
+                self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.OperationalError:
+                pass
 
     def add_adsb_gnss(self, ts: dt.datetime, point: str, n: int, degraded: int, lost: int, ratio: float):
         # doar agregate pe zonă (câte aeronave, câte cu GPS degradat); nicio identitate

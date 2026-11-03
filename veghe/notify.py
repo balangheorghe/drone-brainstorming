@@ -61,13 +61,14 @@ def describe_error(e: Exception, telegram: bool = True) -> str:
     return " · ".join(parts)
 
 
-MIL_NOTE_RX = re.compile(r" ADS-B militar \(NU REDISTRIBUIȚI\):[^.]*\.")
+MIL_NOTE_RX = re.compile(r" ADS-B militar \((?:NU REDISTRIBUIȚI|doar intern)\):[^.]*\.")
 
 
-def redact_military(text: str, kind: str = "") -> str:
+def redact_military(text: str, kind: str = "", status: str = "sent") -> str:
     """Conținutul militar (rezumatul ADS-B) se livrează, dar nu se păstrează: nici în arhivă, nici în jurnal."""
     if kind == "adsb_militar" or "ADS-B MILITAR ·" in text:
-        return "[ADS-B militar – livrat; conținutul nu se păstrează]"
+        what = {"sent": "livrat", "failed": "nelivrat"}.get(status, "")
+        return f"[ADS-B militar – {what + '; ' if what else ''}conținutul nu se păstrează]"
     return MIL_NOTE_RX.sub(" [notă ADS-B militar nepăstrată].", text)
 
 
@@ -157,10 +158,11 @@ class Dispatcher:
                                f"respingeți cu /respinge {oid}.\n—\n{msg.text}", "queued")
         return oid
 
-    def _redact(self, row):
-        red = redact_military(row["text"], row["kind"])
+    def _redact(self, row, status: str = "sent"):
+        red = redact_military(row["text"], row["kind"], status)
         if red != row["text"]:
             self.store.set_outbox(row["id"], text=red)
+            self.store.checkpoint()  # textul vechi nu rămâne nici în jurnalul WAL
 
     def approve(self, oid: int, by: str) -> str:
         self.expire_pending()
@@ -236,7 +238,7 @@ class Dispatcher:
                                        "queued")
                 elif attempts >= self.max_attempts:
                     self.store.set_outbox(row["id"], status="failed", **fields)
-                    self._redact(row)
+                    self._redact(row, "failed")
                     log.error("mesajul #%s nu a putut fi livrat: %s", row["id"], errors)
                     if row["channel"] == "public":
                         self.store.enqueue("internal", "esec", f"[INTERN] Mesajul public #{row['id']} NU a putut fi "

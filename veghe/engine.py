@@ -170,7 +170,7 @@ class Engine:
 
     def _fresh(self, point: str, now) -> bool:
         """Starea ADS-B a zonei e folosită în note doar dacă e recentă (≤ 5 min)."""
-        t = (self.adsb_view.get(point) or {}).get("la")
+        t = (self.adsb_view.get(point) or {}).get("la_ok")  # ultima citire cu date bune
         return now is None or (t is not None and now - t <= dt.timedelta(minutes=5))
 
     def _adsb_note(self, now=None) -> str:
@@ -438,9 +438,11 @@ class Engine:
         cov = m.get("coverage") or {}
         eff = int(m.get("civil_airborne", 0) or 0) + int(m.get("civil_gps_lost", 0) or 0)
         g = m.get("gnss") or {}
+        prev_ok = (self.adsb_view.get(point) or {}).get("la_ok")
         self.adsb_view[point] = {"trafic": eff, "acoperire": cov.get("reason", "ok"),
                                  "gnss": g.get("level"), "manevre": int(m.get("maneuver_aircraft", 0) or 0),
-                                 "control": bool(m.get("is_control")), "sursa": m.get("sursa_date"), "la": now}
+                                 "control": bool(m.get("is_control")), "sursa": m.get("sursa_date"), "la": now,
+                                 "la_ok": now if cov.get("ok") else prev_ok}
         if cov.get("ok") and self.store:
             self.store.add_adsb_sample(now, point, eff, int(m.get("civil_total", 0) or 0))
             if int(g.get("n", 0) or 0) >= 4:
@@ -449,8 +451,7 @@ class Engine:
             return []  # zona de control (departe de Prut) servește doar la comparație
         msgs = (self._adsb_drop(point, m, eff, now) + self._adsb_emergencies(point, m, now)
                 + self._adsb_gnss(point, g, now) + self._adsb_maneuvers(point, m, now))
-        if msgs:
-            self._save_aviation(now)
+        self._save_aviation(now)  # scrie doar dacă starea de păstrat s-a schimbat
         return msgs
 
     def _active(self) -> bool:
@@ -488,10 +489,12 @@ class Engine:
                                         f"agregator; o pană a receptoarelor locale ar arăta la fel). Posibilă închidere de "
                                         f"spațiu aerian (de confirmat cu NOTAM). Nicio acțiune publică.", Level.FOND))
         elif self.adsb_anomaly.get(point):
-            n = ok_streak[(point, "zero")] = ok_streak.get((point, "zero"), 0) + (1 if eff > 0 else 0)
+            clear = isinstance(base, (int, float)) and eff > 0.5 * base
+            n = ok_streak[(point, "zero")] = (ok_streak.get((point, "zero"), 0) + 1) if clear else 0
             if n >= 3:
                 self.adsb_anomaly[point] = False
                 ok_streak[(point, "zero")] = 0
+                self.adsb_last_msg[(point, "redus")] = now  # o revenire parțială nu e o „ocolire” nouă
         # --- ocolire: trafic mult sub fondul recent, dar nu zero (zero = logica de mai sus)
         low = bool(isinstance(base, (int, float)) and base >= 4 and 0 < eff <= 0.3 * base
                    and not self.adsb_anomaly.get(point) and d.get("control_ok") is not False)
@@ -578,7 +581,7 @@ class Engine:
         if not ((m.get("maneuver_alert") and self._active()) or n >= 3):
             return []
         sent_n = self.adsb_maneuver_sent_n.get(point, 0)
-        if sent_n and n < sent_n + 2 and self._quiet((point, "manevre"), now, 60):
+        if n < max(sent_n, 2) + 2 and self._quiet((point, "manevre"), now, 60):
             return []
         self.adsb_last_msg[(point, "manevre")] = now
         self.adsb_maneuver_sent_n[point] = n
@@ -608,8 +611,9 @@ class Engine:
         if trig == 0:
             if self.military_zero_since is None:
                 self.military_zero_since = now
-            if now - self.military_zero_since >= dt.timedelta(minutes=20):
+            if now - self.military_zero_since >= dt.timedelta(minutes=20) and self.military_announced:
                 self.military_announced = 0  # absență susținută: următoarea apariție e din nou „nouă”
+                self._save_aviation(now)
             return []
         self.military_zero_since = None
         recent = self.military_msg_at and now - self.military_msg_at < dt.timedelta(minutes=20)
@@ -630,14 +634,19 @@ class Engine:
     def _save_aviation(self, now):
         if not self.store:
             return
-        st = {"la": iso(now), "military_announced": self.military_announced,
+        st = {"military_announced": self.military_announced,
               "military_msg_at": iso(self.military_msg_at) if self.military_msg_at else None,
               "last_msg": {"|".join(map(str, k)): iso(v) for k, v in self.adsb_last_msg.items()
                            if now - v < dt.timedelta(hours=2)},
               "anomaly": {k: v for k, v in self.adsb_anomaly.items() if v},
               "reduced": {k: v for k, v in self.adsb_reduced.items() if v},
-              "gnss_started": sorted(self.adsb_gnss_started), "maneuver_sent_n": self.adsb_maneuver_sent_n}
-        self.store.kv_set("stare_aviatie", json.dumps(st, ensure_ascii=False))
+              "gnss_started": sorted(self.adsb_gnss_started), "maneuver_sent_n": self.adsb_maneuver_sent_n,
+              "gnss_sent": {k: [iso(t) for t in v if now - t < dt.timedelta(hours=24)] for k, v in self.adsb_gnss_sent.items()}}
+        blob = json.dumps(st, ensure_ascii=False, sort_keys=True)
+        if blob == getattr(self, "_aviation_saved", None) and now - getattr(self, "_aviation_saved_at", now) < dt.timedelta(minutes=30):
+            return
+        self._aviation_saved, self._aviation_saved_at = blob, now
+        self.store.kv_set("stare_aviatie", json.dumps({**st, "la": iso(now)}, ensure_ascii=False))
 
     def _restore_aviation(self, t):
         try:
@@ -645,7 +654,12 @@ class Engine:
         except ValueError:
             return
         at = parse_iso(st.get("la"))
-        if not at or t - at > dt.timedelta(hours=2):
+        if not at:
+            return
+        if t - at <= dt.timedelta(hours=24):  # limita de 4 mesaje GNSS/zi rămâne valabilă după repornire
+            for k, v in (st.get("gnss_sent") or {}).items():
+                self.adsb_gnss_sent[k] = [x for x in (parse_iso(i) for i in v) if x]
+        if t - at > dt.timedelta(hours=2):
             return
         self.military_announced = int(st.get("military_announced") or 0)
         self.military_msg_at = parse_iso(st.get("military_msg_at"))
@@ -715,13 +729,14 @@ class Engine:
         key = m.get("key") or m.get("id")
         if m.get("kind") in ("nou", "inlocuire") and key:
             pred = self._predecessor(m) or ended
+            start, pend = parse_iso(m.get("start")), parse_iso((pred or {}).get("end"))
+            adjacent = not start or not pend or start <= pend + dt.timedelta(hours=1)
+            inherits = bool(pred and pred.get("_anuntat") and m.get("continua") and adjacent)
             if "_anuntat" not in m:
                 # o reemitere (același conținut) a unui NOTAM deja anunțat, lipită de el în timp, nu e o noutate
-                start, pend = parse_iso(m.get("start")), parse_iso((pred or {}).get("end"))
-                adjacent = not start or not pend or start <= pend + dt.timedelta(hours=1)
-                m["_anuntat"] = bool(pred and pred.get("_anuntat") and m.get("continua") and adjacent)
-            if pred and m.get("continua"):
-                pred["_succesor"] = key
+                m["_anuntat"] = inherits
+            if inherits:
+                pred["_succesor"] = key  # predecesorul expiră fără „ÎNCHEIAT”: restricția continuă
             self.notam_active[key] = m
         return ended
 
@@ -892,7 +907,10 @@ class Engine:
             "adsb_anomalii": [k for k, v in self.adsb_anomaly.items() if v],
             "adsb_trafic_redus": [k for k, v in self.adsb_reduced.items() if v],
             "adsb_gnss_degradat": sorted(self.adsb_gnss_started),
-            "adsb_zone": {k: {**v, "la": hhmm(v["la"]) if v.get("la") else None} for k, v in self.adsb_view.items()},
+            "adsb_zone": {k: {**v, "la": hhmm(v["la"]) if v.get("la") else None,
+                              "la_ok": hhmm(v["la_ok"]) if v.get("la_ok") else "niciodată",
+                              "vechi": not v.get("la_ok") or now - v["la_ok"] > dt.timedelta(minutes=5)}
+                          for k, v in self.adsb_view.items()},
             "militar": ({**self.military, "la": hhmm(self.military_at)}
                         if self.military and self.military_at and now - self.military_at <= dt.timedelta(minutes=5) else None),
             "notam_active": [{"id": m.get("id"), "categorie": NOTAM_CAT_RO.get(m.get("category"), m.get("category")),

@@ -3,6 +3,7 @@ exact în forma întoarsă de veghe.adsb_analysis / veghe.adsb_military / veghe.
 
 import datetime as dt
 import json
+import pathlib
 
 from veghe import adsb_military as AM
 from veghe.engine import Engine, EngineConfig
@@ -400,3 +401,121 @@ def test_aviation_announcements_not_repeated_after_restart(tmp_path):
     assert e2.military_announced == 1
     assert e2.process(sig(s, role="adsb_militar", t=t2), t2) == []
     assert e2.process(sig(adsb_meta(emergencies=[em]), t=t2), t2) == []      # aceeași urgență, în 10 min
+
+
+# ------------------------------------------------------------------ a doua verificare a integrării
+def test_note_uses_last_good_reading_only():
+    e = eng()
+    vigilance(e)
+    e.process(sig(adsb_meta(civil_airborne=0, drop={"real": True, "baseline": 6.0})), T0)
+    assert "trafic civil oprit" in e._adsb_note(T0 + dt.timedelta(minutes=1))
+    bad = adsb_meta(civil_airborne=5, coverage={"ok": False, "reason": "control_scazut"})
+    for k in range(1, 30):
+        e.process(sig(bad), T0 + dt.timedelta(minutes=k))
+    assert "trafic civil oprit" not in e._adsb_note(T0 + dt.timedelta(minutes=29))
+
+
+def test_stray_aircraft_does_not_end_closure_or_trigger_detour():
+    e = eng()
+    vigilance(e)
+    zero = adsb_meta(civil_airborne=0, drop={"real": True, "baseline": 8.0, "control_ok": True})
+    stray = adsb_meta(civil_airborne=1, drop={"real": False, "baseline": 8.0, "control_ok": True})
+    seq = [zero, zero, stray, zero, stray, stray, stray, zero, zero, zero]
+    texts = [x.text for k, m in enumerate(seq) for x in e.process(sig(m), T0 + dt.timedelta(minutes=k))]
+    assert len(texts) == 1 and "la 0 aeronave" in texts[0]
+
+
+def test_cleared_state_saved_for_restart(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    vigilance(e, t)
+    e.process(sig(adsb_meta(civil_airborne=0, drop={"real": True, "baseline": 6.0}), t=t), t)
+    for k in range(1, 5):
+        e.process(sig(adsb_meta(civil_airborne=6, drop={"real": False, "baseline": 6.0}), t=t), t + dt.timedelta(minutes=k))
+    assert not e.adsb_anomaly["LRIA Iași"]
+    e2 = eng(st)
+    assert not e2.adsb_anomaly.get("LRIA Iași")
+
+
+def test_gnss_daily_cap_survives_restart(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    on = {"n": 9, "degraded": 4, "lost": 0, "ratio": 0.33, "level": "ridicat", "interference": True, "changed": True, "scope": "local"}
+    off = {"n": 9, "degraded": 0, "lost": 0, "ratio": 0.0, "level": "normal", "interference": False, "changed": True}
+    sent = 0
+    for k in range(4):
+        sent += len([m for m in e.process(sig(adsb_meta(gnss=on), t=t), t + dt.timedelta(minutes=40 * k)) if "precizie GPS degradată" in m.text])
+        e.process(sig(adsb_meta(gnss=off), t=t), t + dt.timedelta(minutes=40 * k + 10))
+    assert sent == 4
+    e2 = eng(st)
+    assert e2.process(sig(adsb_meta(gnss=on), t=t), t + dt.timedelta(minutes=200)) == []
+
+
+def test_maneuver_not_resent_right_after_restart(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    m3 = adsb_meta(holding_recent=3, maneuver_aircraft=3, maneuver_alert=True)
+    assert len(e.process(sig(m3, t=t), t)) == 1
+    e2 = eng(st)
+    e2.process(sig(adsb_meta(), t=t), t + dt.timedelta(minutes=5))          # după repornire analizorul începe de la 0
+    assert e2.process(sig(m3, t=t), t + dt.timedelta(minutes=12)) == []
+
+
+def test_daily_notam_series_each_gets_its_end():
+    e = eng()
+    d1 = notam_meta(id="F5001/26", key="LR:F5001/26", end=iso(T0 + dt.timedelta(hours=1)))
+    e.process(nsig(d1), T0)
+    d2 = notam_meta(id="F5002/26", key="LR:F5002/26", continua="F5001/26", start=iso(T0 + dt.timedelta(hours=17)),
+                    end=iso(T0 + dt.timedelta(hours=25)))
+    e.process(nsig(d2), T0 + dt.timedelta(minutes=5))
+    assert any("ÎNCHEIAT" in m.text and "F5001/26" in m.text for m in e.tick(T0 + dt.timedelta(hours=1, minutes=1)))
+
+
+def test_failed_military_row_says_not_delivered_and_raw_file_is_clean(tmp_path):
+    from veghe.notify import Dispatcher
+
+    class Down:
+        name, min_interval, optional = "telegram:-1", 0, False
+
+        def send(self, text):
+            raise OSError("jos")
+
+    class Up(Down):
+        name = "telegram:-2"
+
+        def send(self, text):
+            pass
+
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    s = AM.summary(MIL, "Iași 150 NM", 47.1, 27.6, 150)
+    d = Dispatcher(st, [Down()], [], max_attempts=1)
+    for m in e.process(sig(s, role="adsb_militar"), T0):
+        d.submit(m)
+    d.flush()
+    assert st.outbox(limit=5)[0]["text"].startswith("[ADS-B militar – nelivrat")
+    d2 = Dispatcher(st, [Up()], [])
+    e2 = eng()
+    for m in e2.process(sig(s, role="adsb_militar"), T0):
+        d2.submit(m)
+    d2.flush()
+    raw = b"".join(pathlib.Path(str(tmp_path / f)).read_bytes() for f in ("v.db", "v.db-wal") if (tmp_path / f).exists())
+    assert "avion de luptă".encode() not in raw and b"km NE" not in raw
+
+
+def test_prune_redacts_old_format_notes(tmp_path):
+    st = Store(str(tmp_path / "v.db"))
+    oid = st.enqueue("internal", "vigilenta", "[INTERN] VIGILENȚĂ. ADS-B militar (doar intern): 1 × avion de luptă (~50 km NE de Iași). Nicio acțiune.", "sent")
+    st.add_event(0, None, "adsb_militar", "avion de luptă: 1", T0)
+    st.prune()
+    assert "avion de luptă" not in st.get_outbox(oid)["text"]
+    assert all(r["text"] == "" for r in st.events_between(T0 - dt.timedelta(hours=1), T0 + dt.timedelta(hours=1)))

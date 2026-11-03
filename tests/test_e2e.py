@@ -634,3 +634,28 @@ def test_clock_skew_checked_only_after_successful_read(tmp_path, upstream, env):
     app.drain()
     app.run_cycle()
     assert app.clock_skew_s is None
+
+
+def test_adsb_blind_monitored_zones_raise_even_if_control_ok():
+    from veghe import collectors as C
+    from veghe import http
+
+    a = C.Adsb("https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}",
+               [{"name": "control", "lat": 46.6, "lon": 24.6, "radius_nm": 120},
+                {"name": "LRIA", "lat": 47.1, "lon": 27.6, "radius_nm": 30}], control_point="control", min_request_gap_s=0)
+    fresh = json.dumps({"now": int(time.time() * 1000), "ac": [{"hex": "a1", "alt_baro": 30000, "lat": 46.6, "lon": 24.6}]}).encode()
+    a._get = lambda url, headers=None: (http.Response(200, {}, fresh) if "/46.6/" in url
+                                        else http.Response(200, {}, b'{"error": "x"}'))
+    with pytest.raises(C.AdsbNoData):
+        a.poll(dt.datetime.now(UTC))
+
+
+def test_check_sources_hides_military_content(tmp_path, upstream, env, capsys):
+    from veghe.__main__ import main
+
+    p = write_config(tmp_path, upstream.base, '\n[sources.adsb.military]\nname = "Iași 150 NM"\nlat = 47.1\nlon = 27.6\nradius_nm = 150\n')
+    p.write_text(p.read_text(encoding="utf-8").replace("[sources.adsb]\n", "[sources.adsb]\nmin_request_gap_s = 0\n"), encoding="utf-8")
+    main(["--config", str(p), "check-sources"])
+    out = capsys.readouterr()
+    assert "militar: date OK, 1 aeronave" in out.out
+    assert "avion de luptă" not in out.out + out.err and "km NE" not in out.out
