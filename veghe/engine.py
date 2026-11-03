@@ -130,6 +130,8 @@ class Engine:
         self.military_at: dt.datetime | None = None
         self.military_announced = 0
         self.military_msg_at: dt.datetime | None = None
+        self.military_zero_since: dt.datetime | None = None
+        self.adsb_ok_streak: dict[tuple, int] = {}
         # NOTAM (context oficial; nu ridică singur nivelul)
         self.notam_active: dict[str, dict] = {}
         self.notam_pending: list[dict] = []
@@ -166,24 +168,33 @@ class Engine:
         return (f"{p.name}: ~{d_t:.0f} km de {self.cfg.target.name}. ETA Prut {pa}–{pb} min, "
                 f"{self.cfg.target.name} {a}–{b} min (linie dreaptă, 450/150 km/h)")
 
-    def _adsb_note(self) -> str:
+    def _fresh(self, point: str, now) -> bool:
+        """Starea ADS-B a zonei e folosită în note doar dacă e recentă (≤ 5 min)."""
+        t = (self.adsb_view.get(point) or {}).get("la")
+        return now is None or (t is not None and now - t <= dt.timedelta(minutes=5))
+
+    def _adsb_note(self, now=None) -> str:
         notes = []
-        pts = [k for k, v in self.adsb_anomaly.items() if v]
+        pts = [k for k, v in self.adsb_anomaly.items() if v and self._fresh(k, now)]
         if pts:
             notes.append(f"ADS-B: trafic civil oprit în jurul {', '.join(pts)}.")
-        red = [k for k, v in self.adsb_reduced.items() if v and not self.adsb_anomaly.get(k)]
+        red = [k for k, v in self.adsb_reduced.items() if v and not self.adsb_anomaly.get(k) and self._fresh(k, now)]
         if red:
             notes.append(f"ADS-B: trafic civil mult redus (posibil ocolit) în jurul {', '.join(red)}.")
-        gn = [k for k in self.adsb_gnss_started]
+        gn = [k for k in sorted(self.adsb_gnss_started) if self._fresh(k, now)]
         if gn:
             notes.append(f"GNSS degradat în jurul {', '.join(gn)}.")
-        man = [f"{k} ({v.get('manevre', 0)})" for k, v in self.adsb_view.items() if v.get("manevre", 0) >= 2]
+        man = [f"{k} ({v.get('manevre', 0)})" for k, v in self.adsb_view.items()
+               if v.get("manevre", 0) >= 2 and self._fresh(k, now)]
         if man:
             notes.append(f"Avioane civile în așteptare/întoarse: {', '.join(man)}.")
-        if self.military and self.military.get("trigger", 0):
-            notes.append(f"ADS-B militar (doar intern): {self.military.get('descriere')}.")
+        mil_fresh = self.military and (now is None or (self.military_at and now - self.military_at <= dt.timedelta(minutes=5)))
+        if mil_fresh and self.military.get("trigger", 0):
+            # doar numere, fără poziții; marcajul permite înlocuirea notei în arhivă după livrare
+            notes.append(f"ADS-B militar (NU REDISTRIBUIȚI): {self.military.get('numere')} (detalii în /stare).")
         closed = [m for m in self.notam_active.values()
-                  if m.get("category") in ("spatiu_aerian_inchis", "drone_uas") and (m.get("near") or m.get("fir") == "LUUU")]
+                  if m.get("category") in ("spatiu_aerian_inchis", "drone_uas") and (m.get("near") or m.get("fir") == "LUUU")
+                  and (now is None or not parse_iso(m.get("start")) or parse_iso(m.get("start")) <= now)]
         if closed:
             notes.append("NOTAM activ: " + "; ".join(f"{m.get('id')} {NOTAM_CAT_RO.get(m.get('category'), m.get('category'))}"
                                                     for m in closed[:3]) + ".")
@@ -232,7 +243,7 @@ class Engine:
                 eta = f" Dacă o dronă ar veni de acolo spre {self.cfg.target.name}: ~{a}–{b} min (linie dreaptă)."
             threat = " Tip amenințare raportat: drone." if self._drone_threat() else ""
             text = (f"[INTERN] VIGILENȚĂ · {hhmm(now)}. Alertă aeriană activă în: {', '.join(sorted(active))}.{threat}{eta}"
-                    f"{self._adsb_note()} Stare internă, nespecifică (filtrul e activ ~20% din timp). Nicio acțiune publică.")
+                    f"{self._adsb_note(now)} Stare internă, nespecifică (filtrul e activ ~20% din timp). Nicio acțiune publică.")
             msgs.append(Message("internal", "vigilenta", text, Level.VIGILENTA))
             self.vigilance_msg_at = now
         self.vigilance_titles = set(active)
@@ -280,13 +291,13 @@ class Engine:
         off = " RO-Alert deja raportat." if h.official else ""
         if kind == "directie":
             text = (f"[INTERN – NU REDISTRIBUIȚI] DIRECȚIE · {hhmm(now)} · H-{h.id}. Sursă UA: drone{jet} spre zona de graniță. "
-                    f"{pos}. Text: «{self._excerpt(sig.text)}» ({src}){self._adsb_note()}")
+                    f"{pos}. Text: «{self._excerpt(sig.text)}» ({src}){self._adsb_note(now)}")
         elif kind == "moldova":
             text = (f"[INTERN] ATENȚIE · {hhmm(now)} · H-{h.id}. R. Moldova: dronă{jet} semnalată. {pos}. "
-                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note()} Un RO-Alert poate urma.")
+                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note(now)} Un RO-Alert poate urma.")
         else:  # apropiere
             text = (f"[INTERN] APROPIERE · {hhmm(now)} · H-{h.id}. Dronă{jet} aproape de Prut / {self.cfg.target.name}. {pos}. "
-                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note()} "
+                    f"«{self._excerpt(sig.text)}» ({src}).{off}{self._adsb_note(now)} "
                     f"Dacă nu există încă RO-Alert, contactați ISU conform protocolului.")
         h.notified = max(h.notified, h.level)
         h.last_msg_at = now
@@ -429,20 +440,29 @@ class Engine:
         g = m.get("gnss") or {}
         self.adsb_view[point] = {"trafic": eff, "acoperire": cov.get("reason", "ok"),
                                  "gnss": g.get("level"), "manevre": int(m.get("maneuver_aircraft", 0) or 0),
-                                 "control": bool(m.get("is_control"))}
+                                 "control": bool(m.get("is_control")), "sursa": m.get("sursa_date"), "la": now}
         if cov.get("ok") and self.store:
             self.store.add_adsb_sample(now, point, eff, int(m.get("civil_total", 0) or 0))
             if int(g.get("n", 0) or 0) >= 4:
                 self.store.add_adsb_gnss(now, point, g.get("n", 0), g.get("degraded", 0), g.get("lost", 0), g.get("ratio", 0.0))
         if m.get("is_control"):
             return []  # zona de control (departe de Prut) servește doar la comparație
-        return (self._adsb_drop(point, m, eff, now) + self._adsb_emergencies(point, m, now)
+        msgs = (self._adsb_drop(point, m, eff, now) + self._adsb_emergencies(point, m, now)
                 + self._adsb_gnss(point, g, now) + self._adsb_maneuvers(point, m, now))
+        if msgs:
+            self._save_aviation(now)
+        return msgs
 
     def _active(self) -> bool:
         return bool(self.vigilance_since) or any(h.level >= Level.DIRECTIE for h in self.open_hyps())
 
+    def _quiet(self, key: tuple, now, minutes: float) -> bool:
+        last = self.adsb_last_msg.get(key)
+        return bool(last and now - last < dt.timedelta(minutes=minutes))
+
     def _adsb_drop(self, point, m, eff, now) -> list[Message]:
+        """Scădere la zero și ocolire (trafic mult redus), cu histerezis: o citire proastă (date lipsă)
+        nu schimbă starea, iar ieșirea cere 3 citiri bune clar peste prag."""
         d = m.get("drop") or {}
         cov = m.get("coverage") or {}
         msgs = []
@@ -450,32 +470,52 @@ class Engine:
         if out and not self.adsb_outage.get(point):
             self._event(Level.FOND, None, "adsb_date_indisponibile", f"{point}: {cov.get('reason')}", now)
         self.adsb_outage[point] = out
-        anomaly = bool(d.get("real"))
-        was = self.adsb_anomaly.get(point, False)
-        self.adsb_anomaly[point] = anomaly
+        if not cov.get("ok"):
+            return msgs  # date lipsă/vechi: nici intrare, nici ieșire
         base = d.get("baseline")
-        if anomaly and not was:
-            self._event(Level.FOND, None, "adsb_anomalie", f"{point}: de la ~{base} la 0", now)
-            if self._active():
-                msgs.append(Message("internal", "adsb",
-                                    f"[INTERN] ADS-B · {hhmm(now)}. Traficul civil din jurul {point} a scăzut de la ~{base:g} "
-                                    f"la 0 aeronave în aer (zona de control normală, date proaspete). Posibilă închidere de "
-                                    f"spațiu aerian (de confirmat cu NOTAM). Nicio acțiune publică.", Level.FOND))
-        # ocolire: trafic mult sub fondul recent (nu zero), cu date bune și zona de control normală
-        low = bool(cov.get("ok") and not anomaly and isinstance(base, (int, float)) and base >= 4
-                   and eff <= 0.3 * base and d.get("control_ok") is not False)
-        streak = self.adsb_low_streak[point] = (self.adsb_low_streak.get(point, 0) + 1) if low else 0
-        reduced = streak >= 3
-        was_r = self.adsb_reduced.get(point, False)
-        self.adsb_reduced[point] = reduced
-        if reduced and not was_r:
-            self._event(Level.FOND, None, "adsb_trafic_redus", f"{point}: {eff} față de ~{base:g}", now)
-            if self._active():
-                msgs.append(Message("internal", "adsb",
-                                    f"[INTERN] ADS-B · {hhmm(now)}. Trafic civil mult redus în jurul {point}: {eff} aeronave "
-                                    f"în aer față de ~{base:g} în ultimele ore (zona de control normală). Posibilă ocolire "
-                                    f"a zonei sau restricție de spațiu aerian; de confirmat (NOTAM). Nicio acțiune publică.",
-                                    Level.FOND))
+        ok_streak = self.adsb_ok_streak
+        # --- scădere la 0 (confirmată de analizor cu zona de control)
+        if d.get("real"):
+            ok_streak[(point, "zero")] = 0
+            if not self.adsb_anomaly.get(point):
+                self.adsb_anomaly[point] = True
+                self._event(Level.FOND, None, "adsb_anomalie", f"{point}: de la ~{base} la 0", now)
+                if self._active() and not self._quiet((point, "zero"), now, 30):
+                    self.adsb_last_msg[(point, "zero")] = now
+                    msgs.append(Message("internal", "adsb",
+                                        f"[INTERN] ADS-B · {hhmm(now)}. Traficul civil din jurul {point} a scăzut de la "
+                                        f"~{base:g} la 0 aeronave în aer (zona de control normală, date proaspete de la "
+                                        f"agregator; o pană a receptoarelor locale ar arăta la fel). Posibilă închidere de "
+                                        f"spațiu aerian (de confirmat cu NOTAM). Nicio acțiune publică.", Level.FOND))
+        elif self.adsb_anomaly.get(point):
+            n = ok_streak[(point, "zero")] = ok_streak.get((point, "zero"), 0) + (1 if eff > 0 else 0)
+            if n >= 3:
+                self.adsb_anomaly[point] = False
+                ok_streak[(point, "zero")] = 0
+        # --- ocolire: trafic mult sub fondul recent, dar nu zero (zero = logica de mai sus)
+        low = bool(isinstance(base, (int, float)) and base >= 4 and 0 < eff <= 0.3 * base
+                   and not self.adsb_anomaly.get(point) and d.get("control_ok") is not False)
+        if low:
+            ok_streak[(point, "redus")] = 0
+            streak = self.adsb_low_streak[point] = self.adsb_low_streak.get(point, 0) + 1
+            if streak >= 3 and not self.adsb_reduced.get(point):
+                self.adsb_reduced[point] = True
+                self._event(Level.FOND, None, "adsb_trafic_redus", f"{point}: {eff} față de ~{base:g}", now)
+                if self._active() and not self._quiet((point, "redus"), now, 30):
+                    self.adsb_last_msg[(point, "redus")] = now
+                    msgs.append(Message("internal", "adsb",
+                                        f"[INTERN] ADS-B · {hhmm(now)}. Trafic civil mult redus în jurul {point}: {eff} "
+                                        f"aeronave în aer față de ~{base:g} în ultimele ore (zona de control normală). "
+                                        f"Posibilă ocolire a zonei sau restricție de spațiu aerian; de confirmat (NOTAM). "
+                                        f"Nicio acțiune publică.", Level.FOND))
+        else:
+            self.adsb_low_streak[point] = 0
+            if self.adsb_reduced.get(point):
+                clear = not isinstance(base, (int, float)) or eff > 0.5 * base
+                n = ok_streak[(point, "redus")] = ok_streak.get((point, "redus"), 0) + 1 if clear else 0
+                if n >= 3:
+                    self.adsb_reduced[point] = False
+                    ok_streak[(point, "redus")] = 0
         return msgs
 
     def _adsb_emergencies(self, point, m, now) -> list[Message]:
@@ -484,8 +524,7 @@ class Engine:
             if not isinstance(e, dict) or not e.get("new"):
                 continue
             key = (point, "urgenta", e.get("code"))
-            last = self.adsb_last_msg.get(key)
-            if last and now - last < dt.timedelta(minutes=10):
+            if self._quiet(key, now, 10):
                 continue
             self.adsb_last_msg[key] = now
             where = (f"la ~{e['dist_km']:.0f} km {e.get('bearing') or ''} de {point}".replace("  ", " ")
@@ -508,18 +547,18 @@ class Engine:
             if not g.get("baseline_ready"):
                 return []  # primele 3 zile: doar învățăm fondul zonei (Marea Neagră are bruiaj frecvent)
             sent = [t for t in self.adsb_gnss_sent.get(point, []) if now - t < dt.timedelta(hours=24)]
-            last = self.adsb_last_msg.get((point, "gnss"))
-            if len(sent) >= 4 or (last and now - last < dt.timedelta(minutes=30)):
+            if len(sent) >= 4 or self._quiet((point, "gnss"), now, 30):
                 return []
             self.adsb_gnss_sent[point] = sent + [now]
             self.adsb_last_msg[(point, "gnss")] = now
             self.adsb_gnss_started.add(point)
-            scope = {"local": ("normală", "local"), "regional": ("afectată și ea", "regional")}.get(g.get("scope"), ("fără date", ""))
+            scope = {"local": ("normală", "Posibil bruiaj GNSS local"),
+                     "regional": ("afectată și ea", "Posibil bruiaj GNSS regional")}.get(
+                         g.get("scope"), ("fără date", "Posibil bruiaj GNSS (întindere necunoscută)"))
             return [Message("internal", "gnss",
                             f"[INTERN] GNSS · {hhmm(now)}. Zona {point}: {g.get('degraded')} din {g.get('n')} aeronave civile "
                             f"cu precizie GPS degradată (NACp<8/NIC<7), dintre care {g.get('lost', 0)} fără poziție GPS. "
-                            f"Zona de control: {scope[0]}. Posibil bruiaj GNSS {scope[1]}; de confirmat. Nicio acțiune publică.",
-                            Level.FOND)]
+                            f"Zona de control: {scope[0]}. {scope[1]}; de confirmat. Nicio acțiune publică.", Level.FOND)]
         self._event(Level.FOND, None, "gnss_normal", f"{point}: {g.get('level')}", now)
         if point not in self.adsb_gnss_started:
             return []
@@ -532,13 +571,14 @@ class Engine:
         return [Message("internal", "gnss", text, Level.FOND)]
 
     def _adsb_maneuvers(self, point, m, now) -> list[Message]:
+        """Anunț la apariție; din nou doar dacă numărul crește cu ≥ 2, sau un memento după 60 min."""
         n = int(m.get("maneuver_aircraft", 0) or 0)
         if n == 0:
             self.adsb_maneuver_sent_n[point] = 0
         if not ((m.get("maneuver_alert") and self._active()) or n >= 3):
             return []
-        last = self.adsb_last_msg.get((point, "manevre"))
-        if last and now - last < dt.timedelta(minutes=20) and n < self.adsb_maneuver_sent_n.get(point, 0) + 2:
+        sent_n = self.adsb_maneuver_sent_n.get(point, 0)
+        if sent_n and n < sent_n + 2 and self._quiet((point, "manevre"), now, 60):
             return []
         self.adsb_last_msg[(point, "manevre")] = now
         self.adsb_maneuver_sent_n[point] = n
@@ -553,24 +593,32 @@ class Engine:
 
     # ------------------------------------------------------------------ aeronave militare (doar rezumat, doar intern)
     def _adsb_military(self, sig, now) -> list[Message]:
+        """Un mesaj la apariția avioanelor de luptă/dronelor; din nou doar dacă numărul crește cu ≥ 2
+        sau după 20 min fără ele. Starea nu se folosește dacă e mai veche de 5 min."""
         from . import adsb_military as AM
 
         s = sig.meta or {}
         if not s.get("ok"):
+            self.military = None  # date indisponibile: nu repetăm o stare veche
             return []
         trig = sum(n for g, n in (s.get("grupuri") or {}).items() if g in AM.TRIGGER)
         self.military = {"n": s.get("n", 0), "grupuri": s.get("grupuri", {}), "trigger": trig,
-                         "descriere": AM.describe(s), "zona": s.get("area")}
+                         "descriere": AM.describe(s), "numere": AM.describe(s, positions=False), "zona": s.get("area")}
         self.military_at = now
         if trig == 0:
-            self.military_announced = 0
+            if self.military_zero_since is None:
+                self.military_zero_since = now
+            if now - self.military_zero_since >= dt.timedelta(minutes=20):
+                self.military_announced = 0  # absență susținută: următoarea apariție e din nou „nouă”
             return []
+        self.military_zero_since = None
         recent = self.military_msg_at and now - self.military_msg_at < dt.timedelta(minutes=20)
         if trig <= self.military_announced or (recent and trig < self.military_announced + 2):
             return []
         self.military_announced = trig
         self.military_msg_at = now
-        self._event(Level.FOND, None, "adsb_militar", ", ".join(f"{g}: {n}" for g, n in s.get("grupuri", {}).items()), now)
+        self._event(Level.FOND, None, "adsb_militar", "", now)  # doar momentul; conținutul nu se arhivează
+        self._save_aviation(now)
         radius = s.get("radius_nm")
         zone = f"în raza de {radius:g} NM ({radius * 1.852:.0f} km) de Iași" if isinstance(radius, (int, float)) else "în zona urmărită"
         return [Message("internal", "adsb_militar",
@@ -578,38 +626,108 @@ class Engine:
                         f"publice {zone}: {AM.describe(s)}. Poate indica o reacție a apărării aeriene. Absența lor nu "
                         f"înseamnă nimic (zboară des fără ADS-B). Nu publicați pozițiile.", Level.FOND)]
 
+    # ------------------------------------------------------------------ stare de aviație după repornire (doar ore și numere)
+    def _save_aviation(self, now):
+        if not self.store:
+            return
+        st = {"la": iso(now), "military_announced": self.military_announced,
+              "military_msg_at": iso(self.military_msg_at) if self.military_msg_at else None,
+              "last_msg": {"|".join(map(str, k)): iso(v) for k, v in self.adsb_last_msg.items()
+                           if now - v < dt.timedelta(hours=2)},
+              "anomaly": {k: v for k, v in self.adsb_anomaly.items() if v},
+              "reduced": {k: v for k, v in self.adsb_reduced.items() if v},
+              "gnss_started": sorted(self.adsb_gnss_started), "maneuver_sent_n": self.adsb_maneuver_sent_n}
+        self.store.kv_set("stare_aviatie", json.dumps(st, ensure_ascii=False))
+
+    def _restore_aviation(self, t):
+        try:
+            st = json.loads(self.store.kv_get("stare_aviatie", "") or "{}")
+        except ValueError:
+            return
+        at = parse_iso(st.get("la"))
+        if not at or t - at > dt.timedelta(hours=2):
+            return
+        self.military_announced = int(st.get("military_announced") or 0)
+        self.military_msg_at = parse_iso(st.get("military_msg_at"))
+        for k, v in (st.get("last_msg") or {}).items():
+            parts = k.split("|")
+            if parse_iso(v):
+                self.adsb_last_msg[tuple(parts)] = parse_iso(v)
+        self.adsb_anomaly.update(st.get("anomaly") or {})
+        self.adsb_reduced.update(st.get("reduced") or {})
+        self.adsb_gnss_started.update(st.get("gnss_started") or [])
+        self.adsb_maneuver_sent_n.update(st.get("maneuver_sent_n") or {})
+
     # ------------------------------------------------------------------ NOTAM (context oficial)
+    def _announced_keys(self) -> dict | None:
+        try:
+            v = self.store.kv_get("notam_anuntate") if self.store else None
+            return json.loads(v) if v is not None else None
+        except ValueError:
+            return {}
+
+    def _save_announced(self):
+        if self.store:
+            keys = {k: m.get("end") or "" for k, m in self.notam_active.items() if m.get("_anuntat")}
+            self.store.kv_set("notam_anuntate", json.dumps(keys))
+
     def _restore_notams(self):
-        """După repornire: NOTAM-urile active din arhivă (semnalele au deja deduplicarea lor)."""
+        """După repornire: NOTAM-urile active din arhivă, cu marcajul „anunțat” păstrat în kv.
+        Cele neanunțate rămân eligibile (ex. programate, sau în așteptare la oprire)."""
         from .timeutil import now as _now
 
         t = _now()
+        self._restore_aviation(t)
         try:
             rows = self.store.signals_by_role("notam", t - dt.timedelta(days=21))
         except Exception:  # noqa: BLE001 - arhivă veche sau indisponibilă
             return
+        announced = self._announced_keys()
         for r in rows:
             try:
                 m = json.loads(r["meta"] or "{}")
             except ValueError:
                 continue
+            if not isinstance(m, dict):
+                continue
             m["_text"] = r["text"]
-            m["_restaurat"] = True  # după repornire: nu le reanunțăm și nu anunțăm încheierea lor
+            key = m.get("key") or m.get("id")
+            # prima pornire după actualizare (fără listă salvată): le considerăm anunțate, fără rafală
+            m["_anuntat"] = True if announced is None else key in announced
             self._notam_apply(m)
         self._notam_expire(t, announce=False)
+        self._save_announced()
+
+    def _predecessor(self, m: dict) -> dict | None:
+        cont = m.get("continua")
+        if not cont:
+            return None
+        scope = (m.get("key") or "").split(":")[0]
+        for v in self.notam_active.values():
+            if v.get("id") == cont and (v.get("key") or "").split(":")[0] == scope:
+                return v
+        return None
 
     def _notam_apply(self, m: dict) -> dict | None:
         ended = self.notam_active.pop(m["ends_key"], None) if m.get("ends_key") else None
+        if m.get("ends_key"):
+            self.notam_pending = [p for p in self.notam_pending if (p.get("key") or p.get("id")) != m["ends_key"]]
         key = m.get("key") or m.get("id")
         if m.get("kind") in ("nou", "inlocuire") and key:
-            prev = self.notam_active.get(key) or ended
-            m.setdefault("_anuntat", bool(prev and prev.get("_anuntat") and m.get("continua")))
+            pred = self._predecessor(m) or ended
+            if "_anuntat" not in m:
+                # o reemitere (același conținut) a unui NOTAM deja anunțat, lipită de el în timp, nu e o noutate
+                start, pend = parse_iso(m.get("start")), parse_iso((pred or {}).get("end"))
+                adjacent = not start or not pend or start <= pend + dt.timedelta(hours=1)
+                m["_anuntat"] = bool(pred and pred.get("_anuntat") and m.get("continua") and adjacent)
+            if pred and m.get("continua"):
+                pred["_succesor"] = key
             self.notam_active[key] = m
         return ended
 
     def _notam_eligible(self, m: dict, now: dt.datetime) -> str | None:
         """„acum”, „viitor” (va fi eligibil) sau None."""
-        if m.get("kind") not in ("nou", "inlocuire") or m.get("continua") or m.get("_anuntat") or m.get("_restaurat"):
+        if m.get("kind") not in ("nou", "inlocuire") or m.get("_anuntat"):
             return None
         cat, fir, locs = m.get("category"), m.get("fir"), set(m.get("locations") or [])
         if not (m.get("near") or fir == "LUUU"):
@@ -628,6 +746,7 @@ class Engine:
     def _notam(self, sig, now) -> list[Message]:
         m = dict(sig.meta or {})
         m["_text"] = sig.text
+        m.pop("_anuntat", None)
         kind = m.get("kind")
         ended = self._notam_apply(m)
         msgs = []
@@ -642,17 +761,26 @@ class Engine:
             self._event(Level.FOND, None, "notam", f"{m.get('id')} {m.get('category')} {m.get('fir')}", now)
             if self._notam_eligible(m, now) == "acum":
                 self.notam_pending.append(m)
-        return msgs + self._notam_flush(now)
+        msgs += self._notam_flush(now)
+        self._save_announced()
+        return msgs
 
     def _notam_flush(self, now) -> list[Message]:
         if not self.notam_pending:
             return []
         if self.notam_last_msg and now - self.notam_last_msg < dt.timedelta(minutes=10):
             return []
-        items, self.notam_pending = self.notam_pending, []
+        # doar cele încă active (nu anulate/înlocuite/expirate cât au așteptat)
+        items = [m for m in self.notam_pending
+                 if self.notam_active.get(m.get("key") or m.get("id")) is m
+                 and not (parse_iso(m.get("end")) and parse_iso(m.get("end")) <= now) and not m.get("_anuntat")]
+        self.notam_pending = []
+        if not items:
+            return []
         self.notam_last_msg = now
         for m in items:
             m["_anuntat"] = True
+        self._save_announced()
         md = [m for m in items if m.get("category") == "spatiu_aerian_inchis" and m.get("fir") == "LUUU"]
         body = items[0]["_text"] if len(items) == 1 else "\n• " + "\n• ".join(m["_text"] for m in items)
         if md:
@@ -665,17 +793,22 @@ class Engine:
 
     def _notam_expire(self, now, announce: bool = True) -> list[Message]:
         msgs = []
+        changed = False
         for k, m in list(self.notam_active.items()):
             end = parse_iso(m.get("end"))
             grace = dt.timedelta(minutes=30) if m.get("estimated") else dt.timedelta(0)
             if end and end + grace < now:
                 del self.notam_active[k]
-                if announce and m.get("_anuntat") and not m.get("estimated"):
+                changed = True
+                succ = m.get("_succesor") in self.notam_active
+                if announce and m.get("_anuntat") and not m.get("estimated") and not succ:
                     msgs.append(Message("internal", "notam_sfarsit",
                                         f"[INTERN] NOTAM ÎNCHEIAT · {hhmm(now)} · {m.get('id')} "
                                         f"({NOTAM_CAT_RO.get(m.get('category'), m.get('category'))}) a expirat.", Level.FOND))
-            elif announce and self._notam_eligible(m, now) == "acum" and m not in self.notam_pending:
-                self.notam_pending.append(m)  # NOTAM programat care a devenit iminent
+            elif announce and self._notam_eligible(m, now) == "acum" and not any(p is m for p in self.notam_pending):
+                self.notam_pending.append(m)  # NOTAM programat care a devenit iminent (sau rămas după repornire)
+        if changed:
+            self._save_announced()
         return msgs
 
     def _adsb_legacy(self, sig, now) -> list[Message]:
@@ -759,8 +892,9 @@ class Engine:
             "adsb_anomalii": [k for k, v in self.adsb_anomaly.items() if v],
             "adsb_trafic_redus": [k for k, v in self.adsb_reduced.items() if v],
             "adsb_gnss_degradat": sorted(self.adsb_gnss_started),
-            "adsb_zone": self.adsb_view,
-            "militar": ({**self.military, "la": hhmm(self.military_at)} if self.military else None),
+            "adsb_zone": {k: {**v, "la": hhmm(v["la"]) if v.get("la") else None} for k, v in self.adsb_view.items()},
+            "militar": ({**self.military, "la": hhmm(self.military_at)}
+                        if self.military and self.military_at and now - self.military_at <= dt.timedelta(minutes=5) else None),
             "notam_active": [{"id": m.get("id"), "categorie": NOTAM_CAT_RO.get(m.get("category"), m.get("category")),
                               "fir": m.get("fir"), "pana_la": hhmm(parse_iso(m["end"])) if m.get("end") else "permanent",
                               "aproape": bool(m.get("near"))} for m in self.notam_active.values()],

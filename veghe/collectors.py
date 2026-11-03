@@ -423,6 +423,10 @@ def count_aircraft(data: dict) -> dict:
     return {"civil_airborne": airborne, "civil_total": total}
 
 
+class AdsbNoData(RuntimeError):
+    """Nicio zonă civilă n-a primit date utilizabile (răspunsuri vechi, goale sau erori)."""
+
+
 class Adsb(Collector):
     """Trafic aerian din ADS-B (agregator public și/sau receptor propriu).
 
@@ -441,6 +445,9 @@ class Adsb(Collector):
         self.api_key = api_key
         self.local_url, self.local_points = local_url, set(local_points or [])
         self.control_point = control_point or None
+        if military:
+            military = {**military, "name": military.get("name", "militar"),
+                        "radius_nm": float(military.get("radius_nm", 150))}
         self.military = military
         self.min_gap = float(min_request_gap_s)
         self._last_req: dict[str, float] = {}
@@ -448,6 +455,15 @@ class Adsb(Collector):
         self.store = None
         self.gnss_ready: dict[str, bool] = {}
         self._gnss_baseline_at = float("-inf")
+        self.stale_s = float((analysis or {}).get("stale_s", 45.0))
+        self.last_errors: list[str] = []
+
+    @property
+    def max_poll_s(self) -> float:
+        """Cât poate dura legitim o citire (zone × surse × 2×timeout + pauze); peste asta e „blocată”."""
+        n = len(self.points) + (1 if self.military else 0)
+        tries = 1 + len(self.fallback_templates) + (1 if self.local_url else 0)
+        return n * (tries * 2 * self.timeout + self.min_gap) + 30
 
     # ---------------------------------------------------------------- fond din arhivă (doar agregate)
     def attach_store(self, store, now: dt.datetime):
@@ -479,60 +495,96 @@ class Adsb(Collector):
         if wait > 0:
             time.sleep(min(wait, 5))
         headers = {"Accept": "application/json"}
-        if self.api_key and "adsb.lol" in host:
-            headers["X-API-Key"] = self.api_key  # doar dacă e setată (politica adsb.lol se poate schimba)
+        parts = urlsplit(url)
+        hn = (parts.hostname or "").lower()
+        if self.api_key and parts.scheme == "https" and (hn == "adsb.lol" or hn.endswith(".adsb.lol")):
+            headers["X-API-Key"] = self.api_key  # doar spre adsb.lol, doar prin https
         try:
             return self._get(url, headers).json()
         finally:
             self._last_req[host] = time.monotonic()
 
-    def _snapshot(self, p: dict):
-        templates = []
+    def _usable(self, data, now) -> bool:
+        from .adsb_analysis import snapshot_meta
+
+        m = snapshot_meta(data) if isinstance(data, dict) else {"ok": False}
+        if not m.get("ok"):
+            return False
+        dn = m.get("data_now")
+        return dn is None or now.timestamp() - dn <= self.stale_s
+
+    def _snapshot(self, p: dict, now: dt.datetime, failed: set):
+        """Prima sursă cu date utilizabile: receptor propriu (dacă e cazul), principală, rezerve.
+        Sursele care au eșuat deja în această citire se încearcă ultimele. Întoarce (date, eticheta, eroare)."""
+        cands = []
         if self.local_url and p["name"] in self.local_points:
-            templates.append(self.local_url)
-        templates += [self.url_template] + self.fallback_templates
-        last = None
-        for tpl in templates:
+            cands.append(("local", self.local_url))
+        cands.append(("principal", self.url_template))
+        cands += [(f"rezervă {i + 1}", t) for i, t in enumerate(self.fallback_templates)]
+        cands.sort(key=lambda c: c[1] in failed)
+        last, fallback = None, None
+        for label, tpl in cands:
             try:
-                return self._fetch(tpl, p), None
+                data = self._fetch(tpl, p)
             except Exception as e:  # noqa: BLE001 - încercăm sursa următoare
+                failed.add(tpl)
                 last = e
-        return None, last
+                self.last_errors.append(f"{p['name']} · {label}: {type(e).__name__}: {str(e)[:120]}")
+                continue
+            if self._usable(data, now):
+                return data, label, None
+            failed.add(tpl)
+            self.last_errors.append(f"{p['name']} · {label}: răspuns fără date proaspete")
+            fallback = fallback or (data, label)
+        if fallback:
+            return fallback[0], fallback[1], None  # măcar un răspuns: analizorul îl va marca „date vechi”
+        return None, None, last
 
     def poll(self, now):
         from . import adsb_military
         from .adsb_analysis import aircraft_list, snapshot_meta
 
         self._refresh_gnss_baseline(now)
-        out, errors = [], []
+        out, errors, failed = [], [], set()
+        self.last_errors = []
+        usable = 0
         # zona de control prima: altfel comparația folosește datele ciclului anterior
         for p in sorted(self.points, key=lambda x: x["name"] != self.control_point):
-            data, err = self._snapshot(p)
+            data, label, err = self._snapshot(p, now, failed)
             if err is not None:
                 errors.append(err)
             src = snapshot_meta(data) if data is not None else {"ok": False}
             r = self.analyzer.update(p["name"], p["lat"], p["lon"], int(p.get("radius_nm", 30)),
                                      aircraft_list(data) if data is not None else [], now, src)
             r["is_control"] = p["name"] == self.control_point
+            r["sursa_date"] = label
             r.setdefault("gnss", {})["baseline_ready"] = self.gnss_ready.get(p["name"], False)
             cov = r.get("coverage") or {}
+            if cov.get("ok") or cov.get("reason") not in ("sursa_indisponibila", "date_vechi"):
+                usable += 1
             text = f"{p['name']}: {r.get('civil_airborne', 0)} civile în aer"
             if not cov.get("ok", True):
                 text += f" (date: {cov.get('reason')})"
             out.append(Signal(source=self.name, role="adsb", text=text, received_at=now,
                               ext_id=f"{p['name']}@{iso(now)}", meta=r))
-        total = len(self.points)
         if self.military:
-            total += 1
             m = self.military
-            data, err = self._snapshot({**m, "name": m.get("name", "militar")})
-            if err is not None:
-                errors.append(err)
-            else:
-                s = adsb_military.summary(data, m.get("name", "militar"), m["lat"], m["lon"], m.get("radius_nm", 150))
-                out.append(Signal(source=self.name, role="adsb_militar", received_at=now,
-                                  text=f"Militar (ADS-B public), {m.get('name', 'zona')}: {adsb_military.describe(s)}",
-                                  ext_id=f"militar@{iso(now)}", meta=s))
-        if errors and len(errors) >= total:
-            raise errors[-1]  # nicio cerere reușită: sursa e căzută (vezi starea surselor)
+            data, _, err = self._snapshot(m, now, failed)
+            s = {"area": m["name"], "radius_nm": m["radius_nm"], "ok": False, "n": 0, "grupuri": {}, "detalii": []}
+            if err is None:
+                try:
+                    s = adsb_military.summary(data, m["name"], m["lat"], m["lon"], m["radius_nm"], now=now,
+                                              stale_s=self.stale_s)
+                except Exception as e:  # noqa: BLE001 - rezumatul militar nu are voie să strice citirea civilă
+                    self.last_errors.append(f"militar: {type(e).__name__}: {e}")
+            # și la eroare trimitem un semnal ok=False, ca motorul să nu folosească o stare veche
+            out.append(Signal(source=self.name, role="adsb_militar", received_at=now,
+                              text=f"Militar (ADS-B public), {m['name']}: "
+                                   + (adsb_military.describe(s) if s.get("ok") else "date indisponibile"),
+                              ext_id=f"militar@{iso(now)}", meta=s))
+        if self.points and usable == 0:
+            # nicio zonă civilă cu date utilizabile: sursa e „oarbă” → eroare (SURSĂ CĂZUTĂ după 3 citiri)
+            if errors:
+                raise errors[-1]
+            raise AdsbNoData("niciun agregator ADS-B n-a dat date proaspete: " + "; ".join(self.last_errors[-3:]))
         return out

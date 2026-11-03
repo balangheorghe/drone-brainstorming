@@ -369,7 +369,7 @@ def parse_icao_notam(raw: str) -> Notam | None:
         m = re.match(r"(\d{10})\s*(EST)?", cv)
         if m:
             n.end, n.estimated = _ymdhm(m.group(1)), bool(m.group(2))
-    n.schedule = " ".join(vals["D"].split()) or None if "D" in vals else None
+    n.schedule = (scrub_text(" ".join(vals["D"].split())) or None) if "D" in vals else None
     n.text = _tidy(vals.get("E", ""))
     for key, attr in (("F", "lower"), ("G", "upper")):
         if key in vals:
@@ -567,7 +567,7 @@ def _nms_feature(f: dict) -> Notam | None:
         n.end = parse_iso(end) or n.end
     if str(nd.get("estimated") or "").lower() == "true":
         n.estimated = True
-    n.schedule = str(nd.get("schedule") or "").strip() or n.schedule
+    n.schedule = scrub_text(str(nd.get("schedule") or "").strip()) or n.schedule
     if isinstance(nd.get("text"), str) and nd["text"].strip() and not n.text:
         n.text = _tidy(_clean(nd["text"]))
     n.lower = str(nd.get("lowerLimit") or "").strip().upper() or n.lower

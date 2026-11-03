@@ -83,8 +83,25 @@ def build_collectors(cfg: Config) -> list[C.Collector]:
         mil = ad.get("military")
         if isinstance(mil, dict) and not mil.get("enabled", True):
             mil = None
-        if mil is not None and not (isinstance(mil, dict) and {"lat", "lon"} <= set(mil)):
-            raise ConfigError("sources.adsb.military trebuie să aibă lat și lon (și opțional radius_nm, name)")
+        if mil is not None:
+            if not (isinstance(mil, dict) and {"lat", "lon"} <= set(mil)):
+                raise ConfigError("sources.adsb.military trebuie să aibă lat și lon (și opțional radius_nm, name)")
+            mil = {"name": str(mil.get("name", "militar")), "lat": num(mil["lat"], "adsb.military.lat"),
+                   "lon": num(mil["lon"], "adsb.military.lon"),
+                   "radius_nm": num(mil.get("radius_nm", 150), "adsb.military.radius_nm")}
+        pts = ad.get("points", [])
+        names = []
+        for i, pt in enumerate(pts if isinstance(pts, list) else []):
+            if not isinstance(pt, dict) or not {"name", "lat", "lon"} <= set(pt):
+                raise ConfigError(f"sources.adsb.points[{i}] trebuie să aibă name, lat, lon")
+            num(pt["lat"], f"adsb.points[{i}].lat"), num(pt["lon"], f"adsb.points[{i}].lon")
+            num(pt.get("radius_nm", 30), f"adsb.points[{i}].radius_nm")
+            names.append(pt["name"])
+        if len(names) != len(set(names)):
+            raise ConfigError("sources.adsb.points: nume duplicate")
+        cp = ad.get("control_point", "")
+        if cp and cp not in names:
+            raise ConfigError(f"sources.adsb.control_point = {cp!r} nu e numele niciunei zone din points ({names})")
         try:
             out.append(C.Adsb(ad.get("url_template", "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"),
                               ad.get("points", []), interval=max(30, num(ad.get("interval", 60), "adsb.interval")),
@@ -264,7 +281,7 @@ class App:
             c = next(x for x in self.collectors if x.name == name)
             if not fut.done():
                 # descărcare blocată: o tratăm ca eroare (o singură dată), ca operatorii să afle
-                if name not in self.stuck and mono - self.started[name] > 3 * c.timeout + 30:
+                if name not in self.stuck and mono - self.started[name] > getattr(c, "max_poll_s", 3 * c.timeout + 30):
                     self.stuck.add(name)
                     self.errors[name] = max(self.errors[name] + 1, DOWN_AFTER_ERRORS)
                     self.store.health_error(name, "blocată: descărcarea nu s-a terminat")
@@ -274,11 +291,11 @@ class App:
             del self.running[name]
             self.stuck.discard(name)
             sigs, err = fut.result()
-            self._check_clock(c)
             if err is None:
                 self.errors[name] = 0
                 self.next_due[name] = mono + c.interval
-                sample = sigs[0].text[:200] if sigs else ""
+                self._check_clock(c)  # doar după o citire reușită (altfel antetul Date e vechi)
+                sample = next((s.text for s in sigs if s.role != "adsb_militar"), "")[:200]
                 self.store.health_ok(name, len(sigs), sample)
                 if c.role == "ua_alert_state":
                     with self._lock:
@@ -416,6 +433,7 @@ class App:
         if zones:
             lines.append("ADS-B: " + "; ".join(
                 f"{k} {v['trafic']} în aer" + (f", date: {v['acoperire']}" if v["acoperire"] != "ok" else "")
+                + (f", sursa: {v['sursa']}" if v.get("sursa") not in (None, "principal") else "")
                 + (f", GNSS {v['gnss']}" if v.get("gnss") not in (None, "normal", "insuficient") else "")
                 + (f", {v['manevre']} în așteptare/întoarse" if v.get("manevre") else "") for k, v in zones.items()))
         if st.get("militar"):

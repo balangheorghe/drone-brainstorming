@@ -62,13 +62,17 @@ def cmd_check_sources(args):
         elif raw == 0 and "when:" in getattr(c, "url", ""):
             note = " (fluxul caută doar știrile recente; gol când nu e nimic nou)"
         print(f"✓ {c.name:28s} {len(sigs):3d} elemente · cel mai nou: {hhmm(newest) if newest else '-'}{note}")
+        for err in (getattr(c, "last_errors", None) or [])[:4]:
+            print(f"      ! {err}")
         for s in sigs[-3:]:
             extra = ""
             if s.role == "ua_alert_state":
                 extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}"
             elif s.role == "adsb":
                 g = s.meta.get("gnss") or {}
-                extra = (f" {json.dumps({'civil_airborne': s.meta.get('civil_airborne'), 'acoperire': (s.meta.get('coverage') or {}).get('reason'), 'gnss': g.get('level')}, ensure_ascii=False)}")
+                info = {"civil_airborne": s.meta.get("civil_airborne"), "acoperire": (s.meta.get("coverage") or {}).get("reason"),
+                        "gnss": g.get("level"), "sursa": s.meta.get("sursa_date")}
+                extra = f" {json.dumps(info, ensure_ascii=False)}"
             print(f"      · {s.text[:140]}{extra}")
     print(f"\n{ok}/{len(cols)} surse au răspuns corect.")
     skew = clock_skew(cols)

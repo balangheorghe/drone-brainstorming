@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import logging
 import threading
 import time
@@ -60,13 +61,23 @@ def describe_error(e: Exception, telegram: bool = True) -> str:
     return " · ".join(parts)
 
 
+MIL_NOTE_RX = re.compile(r" ADS-B militar \(NU REDISTRIBUIȚI\):[^.]*\.")
+
+
+def redact_military(text: str, kind: str = "") -> str:
+    """Conținutul militar (rezumatul ADS-B) se livrează, dar nu se păstrează: nici în arhivă, nici în jurnal."""
+    if kind == "adsb_militar" or "ADS-B MILITAR ·" in text:
+        return "[ADS-B militar – livrat; conținutul nu se păstrează]"
+    return MIL_NOTE_RX.sub(" [notă ADS-B militar nepăstrată].", text)
+
+
 class ConsoleSender:
     name = "console"
     min_interval = 0.0
     optional = True  # doar jurnal: nu decide dacă mesajul a ajuns
 
     def send(self, text: str):
-        log.info("MESAJ: %s", text)
+        log.info("MESAJ: %s", redact_military(text))
 
 
 class TelegramSender:
@@ -146,6 +157,11 @@ class Dispatcher:
                                f"respingeți cu /respinge {oid}.\n—\n{msg.text}", "queued")
         return oid
 
+    def _redact(self, row):
+        red = redact_military(row["text"], row["kind"])
+        if red != row["text"]:
+            self.store.set_outbox(row["id"], text=red)
+
     def approve(self, oid: int, by: str) -> str:
         self.expire_pending()
         row = self.store.get_outbox(oid)
@@ -210,6 +226,7 @@ class Dispatcher:
                 fields = {"attempts": attempts, "delivered": ",".join(sorted(delivered)), "error": "; ".join(errors)[:500] or None}
                 if required <= delivered:
                     self.store.set_outbox(row["id"], status="sent", sent_at=iso(now()), **fields)
+                    self._redact(row)
                     sent += 1
                 elif row["channel"] == "public" and ambiguous:
                     # nu reîncercăm automat un mesaj public care poate fi deja publicat (ar apărea de două ori)
@@ -219,6 +236,7 @@ class Dispatcher:
                                        "queued")
                 elif attempts >= self.max_attempts:
                     self.store.set_outbox(row["id"], status="failed", **fields)
+                    self._redact(row)
                     log.error("mesajul #%s nu a putut fi livrat: %s", row["id"], errors)
                     if row["channel"] == "public":
                         self.store.enqueue("internal", "esec", f"[INTERN] Mesajul public #{row['id']} NU a putut fi "

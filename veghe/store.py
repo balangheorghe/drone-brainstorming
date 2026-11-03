@@ -240,6 +240,9 @@ class Store:
             cut = iso(now() - dt.timedelta(days=keep_adsb_days))
             self._db.execute("DELETE FROM adsb_samples WHERE ts < ?", (cut,))
             self._db.execute("DELETE FROM adsb_gnss WHERE ts < ?", (cut,))
+            # rezumatele militare nu se păstrează (de obicei sunt deja înlocuite la livrare)
+            self._db.execute("UPDATE outbox SET text='[ADS-B militar – conținutul nu se păstrează]' "
+                             "WHERE kind='adsb_militar' AND status!='queued' AND text NOT LIKE '[ADS-B militar%'")
             self._db.commit()
 
     def add_adsb_gnss(self, ts: dt.datetime, point: str, n: int, degraded: int, lost: int, ratio: float):

@@ -9,7 +9,8 @@ nu urmărește traiectorii, nu stochează nimic. Distanța e rotunjită la 10 km
 
 De ce doar intern: datele sunt publice, dar republicarea pozițiilor aeronavelor militare în timpul
 unei operațiuni poate ajuta adversarul și poate avea consecințe legale. Avioanele de poliție aeriană
-zboară des fără ADS-B: absența lor nu înseamnă nimic.
+zboară des fără ADS-B: absența lor nu înseamnă nimic. Rezumatul se livrează pe canalele interne, dar nu
+se păstrează: în arhivă (outbox) textul e înlocuit după livrare, iar în jurnal apare redactat.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from __future__ import annotations
 import re
 
 from . import geo
-from .adsb_analysis import _bearing, _num, _on_ground, _pos, compass_ro, is_military, snapshot_meta
+from .adsb_analysis import _bearing, _num, _on_ground, _pos, _ts, compass_ro, is_military, is_private, snapshot_meta
 
 LUPTA = "avion de luptă"
 DRONA = "dronă"
@@ -64,10 +65,15 @@ def group_of(ac: dict) -> str:
 
 
 def summary(data: dict, area: str, center_lat: float, center_lon: float, radius_nm: float,
-            max_seen_s: float = 60.0) -> dict:
-    """Rezumatul aeronavelor militare în aer în zonă. Fără identități."""
-    meta = snapshot_meta(data)
+            max_seen_s: float = 60.0, now=None, stale_s: float = 45.0) -> dict:
+    """Rezumatul aeronavelor militare în aer în zonă. Fără identități.
+    Cu `now`: un instantaneu mai vechi de `stale_s` secunde e tratat ca indisponibil (ok=False)."""
+    meta = snapshot_meta(data) if isinstance(data, dict) else {"ok": False}
     out = {"area": area, "radius_nm": radius_nm, "ok": bool(meta.get("ok")), "n": 0, "grupuri": {}, "detalii": []}
+    if out["ok"] and now is not None and meta.get("data_now") is not None:
+        t = _ts(now)
+        if t is not None and t - meta["data_now"] > stale_s:
+            out["ok"] = False
     if not out["ok"]:
         return out
     lst = data.get("ac")
@@ -81,13 +87,15 @@ def summary(data: dict, area: str, center_lat: float, center_lon: float, radius_
         if seen is not None and seen > max_seen_s:
             continue
         p = _pos(ac)
-        if p is not None and geo.haversine_km(center[0], center[1], p[0], p[1]) > radius_nm * 1.852 + 1:
+        if p is None:
+            continue  # fără poziție nu știm dacă e în zonă (contact Mode-S fără poziție)
+        if geo.haversine_km(center[0], center[1], p[0], p[1]) > radius_nm * 1.852 + 1:
             continue  # aircraft.json local: filtrăm pe distanță la noi
         g = group_of(ac)
         out["n"] += 1
         out["grupuri"][g] = out["grupuri"].get(g, 0) + 1
         d = {"grup": g, "dist_km": None, "directie": None}
-        if p is not None:
+        if not is_private(ac):  # PIA/LADD: doar numărate, fără distanță/direcție
             d["dist_km"] = int(round(geo.haversine_km(center[0], center[1], p[0], p[1]) / 10.0) * 10)
             d["directie"] = compass_ro(_bearing(center, p))
         out["detalii"].append(d)
@@ -96,11 +104,12 @@ def summary(data: dict, area: str, center_lat: float, center_lon: float, radius_
     return out
 
 
-def describe(s: dict, center_name: str = "Iași") -> str:
-    """Text scurt: „2 avioane de luptă (~40 km NE), 1 avion radar/recunoaștere (~120 km S)”."""
+def describe(s: dict, center_name: str = "Iași", positions: bool = True) -> str:
+    """Text scurt: „2 × avion de luptă (~40 km NE de Iași), 1 × avion radar/recunoaștere (~120 km S de Iași)”.
+    positions=False: doar numere (pentru notele din alte mesaje)."""
     parts = []
     for g, n in sorted(s.get("grupuri", {}).items(), key=lambda kv: (kv[0] not in TRIGGER, -kv[1])):
-        near = [d for d in s.get("detalii", []) if d["grup"] == g and d["dist_km"] is not None]
+        near = [d for d in s.get("detalii", []) if d["grup"] == g and d["dist_km"] is not None] if positions else []
         where = f" (~{near[0]['dist_km']} km {near[0]['directie']} de {center_name})" if near else ""
         parts.append(f"{n} × {g}{where}")
     return ", ".join(parts) if parts else "niciuna"

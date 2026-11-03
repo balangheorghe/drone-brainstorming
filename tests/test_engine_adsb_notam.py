@@ -164,9 +164,35 @@ def test_military_message_on_fighters_only_rate_limited_internal():
     assert e.process(sig(s, role="adsb_militar"), T0 + dt.timedelta(minutes=1)) == []    # același număr
     only_awacs = {**s, "grupuri": {"avion radar/recunoaștere": 1}, "n": 1}
     assert e.process(sig(only_awacs, role="adsb_militar"), T0 + dt.timedelta(minutes=30)) == []  # doar context
-    assert e.status(T0)["militar"]["trigger"] == 0
-    msgs = e.process(sig(s, role="adsb_militar"), T0 + dt.timedelta(minutes=31))         # reapar după zero
+    assert e.status(T0 + dt.timedelta(minutes=30))["militar"]["trigger"] == 0
+    # pâlpâire: o absență scurtă nu face din reapariție un mesaj nou
+    assert e.process(sig(s, role="adsb_militar"), T0 + dt.timedelta(minutes=31)) == []
+    for k in range(10):                                                                   # absență susținută ≥ 20 min
+        e.process(sig(only_awacs, role="adsb_militar"), T0 + dt.timedelta(minutes=32 + 3 * k))
+    msgs = e.process(sig(s, role="adsb_militar"), T0 + dt.timedelta(minutes=63))
     assert len(msgs) == 1
+    # date indisponibile: starea veche nu mai e folosită
+    e.process(sig({"ok": False}, role="adsb_militar"), T0 + dt.timedelta(minutes=64))
+    assert e.military is None and e.status(T0 + dt.timedelta(minutes=64))["militar"] is None
+
+
+def test_military_flicker_does_not_spam():
+    e = eng()
+    s = AM.summary(MIL, "Iași 150 NM", 47.1, 27.6, 150)
+    two = {**s, "grupuri": {"avion de luptă": 2}, "n": 2}
+    none = {**s, "grupuri": {}, "n": 0}
+    sent = 0
+    for k in range(11):                                   # 2 avioane apar și dispar la fiecare 2 min, 20 min
+        sent += len(e.process(sig(two if k % 2 == 0 else none, role="adsb_militar"), T0 + dt.timedelta(minutes=2 * k)))
+    assert sent == 1
+
+
+def test_military_note_has_no_positions_and_expires():
+    e = eng()
+    e.process(sig(AM.summary(MIL, "Iași 150 NM", 47.1, 27.6, 150), role="adsb_militar"), T0)
+    note = e._adsb_note(T0 + dt.timedelta(minutes=1))
+    assert "NU REDISTRIBUIȚI" in note and "1 × avion de luptă" in note and "km" not in note
+    assert "militar" not in e._adsb_note(T0 + dt.timedelta(minutes=10))
 
 
 # ------------------------------------------------------------------ NOTAM
@@ -231,10 +257,146 @@ def test_notam_reissue_not_reannounced_and_restored_after_restart(tmp_path):
     e.process(nsig(notam_meta()), T0)
     again = notam_meta(id="F8100/26", key="LR:F8100/26", continua="F8021/26")
     assert e.process(nsig(again), T0 + dt.timedelta(minutes=30)) == []
+    # prima pornire după actualizare (fără listă salvată): arhiva e considerată deja anunțată
     st = Store(str(tmp_path / "v.db"))
-    s1 = nsig(notam_meta())
-    st.add_signal(s1)
-    e2 = eng(st)                                                    # repornire: starea vine din arhivă
+    st.add_signal(nsig(notam_meta()))
+    e2 = eng(st)
     assert [n["id"] for n in e2.status(T0)["notam_active"]] == ["F8021/26"]
     assert e2.tick(T0 + dt.timedelta(minutes=20)) == []             # nu se reanunță
-    assert e2.tick(T0 + dt.timedelta(hours=9)) == []                # nici încheierea (n-am anunțat-o noi)
+    assert any("ÎNCHEIAT" in m.text for m in e2.tick(T0 + dt.timedelta(hours=9)))   # încheierea, da
+
+
+def test_notam_state_survives_restart(tmp_path):
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    a = notam_meta()
+    s_a = nsig(a)
+    st.add_signal(s_a)
+    assert len(e.process(s_a, T0)) == 1                              # A anunțat
+    b = notam_meta(id="F8022/26", key="LR:F8022/26")
+    s_b = nsig(b)
+    st.add_signal(s_b)
+    assert e.process(s_b, T0 + dt.timedelta(minutes=2)) == []        # B în așteptare (limita de 10 min)
+    fut = notam_meta(id="F8023/26", key="LR:F8023/26", start=iso(T0 + dt.timedelta(hours=10)),
+                     end=iso(T0 + dt.timedelta(hours=14)))
+    s_f = nsig(fut)
+    st.add_signal(s_f)
+    assert e.process(s_f, T0 + dt.timedelta(minutes=3)) == []        # programat peste 10 h
+    e2 = eng(st)                                                     # repornire înainte de trimiterea lui B
+    msgs = e2.tick(T0 + dt.timedelta(minutes=15))
+    assert len(msgs) == 1 and "F8022/26" in msgs[0].text and "F8021/26" not in msgs[0].text
+    msgs = e2.tick(T0 + dt.timedelta(hours=4, minutes=5))
+    assert len(msgs) == 1 and "F8023/26" in msgs[0].text            # programatul, când devine iminent
+    cancel = notam_meta(id="F8030/26", key="LR:F8030/26", kind="anulare", ends="F8021/26", ends_key="LR:F8021/26")
+    assert any("ANULAT" in m.text for m in e2.process(nsig(cancel), T0 + dt.timedelta(hours=5)))
+
+
+def test_notam_cancelled_while_pending_is_not_announced():
+    e = eng()
+    e.process(nsig(notam_meta()), T0)
+    b = notam_meta(id="F8022/26", key="LR:F8022/26")
+    assert e.process(nsig(b), T0 + dt.timedelta(minutes=1)) == []
+    cancel = notam_meta(id="F8031/26", key="LR:F8031/26", kind="anulare", ends="F8022/26", ends_key="LR:F8022/26")
+    e.process(nsig(cancel), T0 + dt.timedelta(minutes=2))
+    assert e.tick(T0 + dt.timedelta(minutes=11)) == []
+
+
+def test_notam_reissue_ends_quietly_and_rescheduled_one_is_announced():
+    e = eng()
+    p1 = notam_meta(id="P1/26", key="LR:P1/26", end=iso(T0 + dt.timedelta(hours=2)))
+    e.process(nsig(p1), T0)                                          # anunțat
+    p2 = notam_meta(id="P2/26", key="LR:P2/26", continua="P1/26", start=iso(T0 + dt.timedelta(hours=2)),
+                    end=iso(T0 + dt.timedelta(days=30)))
+    assert e.process(nsig(p2), T0 + dt.timedelta(minutes=30)) == []  # reemitere lipită: nu e o noutate
+    assert e.tick(T0 + dt.timedelta(hours=2, minutes=1)) == []       # P1 expiră, dar continuă ca P2: fără ÎNCHEIAT
+    # un NOTAM programat neanunțat, mutat mai devreme (același conținut): devine eligibil
+    e2 = eng()
+    f1 = notam_meta(id="F6001/26", key="LR:F6001/26", start=iso(T0 + dt.timedelta(hours=30)),
+                    end=iso(T0 + dt.timedelta(hours=34)))
+    assert e2.process(nsig(f1), T0) == []
+    f2 = notam_meta(id="F6002/26", key="LR:F6002/26", kind="inlocuire", continua="F6001/26", ends="F6001/26",
+                    ends_key="LR:F6001/26", start=iso(T0 + dt.timedelta(hours=4)), end=iso(T0 + dt.timedelta(hours=8)))
+    msgs = e2.process(nsig(f2), T0 + dt.timedelta(minutes=1))
+    assert len(msgs) == 1 and "F6002/26" in msgs[0].text
+
+
+# ------------------------------------------------------------------ după verificarea integrării
+def test_flapping_traffic_does_not_repeat_drop_or_detour_messages():
+    e = eng()
+    vigilance(e)
+    low = adsb_meta(civil_airborne=1, drop={"real": False, "baseline": 8.0, "control_ok": True})
+    zero = adsb_meta(civil_airborne=0, drop={"real": True, "baseline": 8.0, "control_ok": True})
+    bad = adsb_meta(civil_airborne=0, coverage={"ok": False, "reason": "date_vechi"},
+                    drop={"real": False, "suspected_outage": True, "baseline": 8.0})
+    mid = adsb_meta(civil_airborne=3, drop={"real": False, "baseline": 8.0, "control_ok": True})
+    seq = [low, low, low, bad, low, mid, low, low, low, bad, zero, bad, zero, low, low, low, mid, low, low, low]
+    texts = []
+    for k, m in enumerate(seq):
+        texts += [x.text for x in e.process(sig(m), T0 + dt.timedelta(minutes=k))]
+    assert sum("mult redus" in t for t in texts) == 1 and sum("la 0 aeronave" in t for t in texts) == 1
+
+
+def test_maneuver_reminder_only_after_60_min():
+    e = eng()
+    m3 = adsb_meta(holding_recent=3, maneuver_aircraft=3, maneuver_alert=True)
+    sent = [len(e.process(sig(m3), T0 + dt.timedelta(minutes=k))) for k in range(0, 70, 5)]
+    assert sent[0] == 1 and sum(sent) == 2 and sent[12] == 1        # la 0 și la 60 min
+
+
+def test_gnss_unknown_scope_wording():
+    e = eng()
+    on = {"n": 9, "degraded": 4, "lost": 0, "ratio": 0.33, "level": "ridicat", "interference": True, "changed": True,
+          "scope": None}
+    msgs = e.process(sig(adsb_meta(gnss=on)), T0)
+    assert "întindere necunoscută" in msgs[0].text and "GNSS ;" not in msgs[0].text
+
+
+def test_military_content_not_kept_in_archive(tmp_path):
+    from veghe.notify import ConsoleSender, Dispatcher
+
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    d = Dispatcher(st, [ConsoleSender()], [])
+
+    class Fake:
+        name, min_interval, optional = "telegram:-1", 0, False
+
+        def __init__(self):
+            self.got = []
+
+        def send(self, text):
+            self.got.append(text)
+
+    tg = Fake()
+    d.senders["internal"].append(tg)
+    for m in e.process(sig(AM.summary(MIL, "Iași 150 NM", 47.1, 27.6, 150), role="adsb_militar"), T0):
+        d.submit(m)
+    t1 = T0 + dt.timedelta(minutes=1)
+    vig = e.process(Signal(source="alerts_in_ua", role="ua_alert_state", text="", received_at=t1,
+                           meta={"active": [{"title": "Подільський район", "type": "raion", "oblast": "Одеська область"}]}), t1)
+    assert any("ADS-B militar (NU REDISTRIBUIȚI)" in m.text for m in vig)     # nota apare în VIGILENȚĂ
+    for m in vig:
+        d.submit(m)
+    d.flush()
+    assert any("VIGILENȚĂ" in t and "ADS-B militar (NU REDISTRIBUIȚI): 1 × avion de luptă" in t for t in tg.got)
+    assert any("avion de luptă" in t for t in tg.got)                       # livrat
+    rows = [r["text"] for r in st.outbox(limit=50)]
+    assert rows and not any("avion de luptă" in t or "km NE" in t for t in rows)   # dar nepăstrat
+    assert not any("avion de luptă" in (r["text"] or "") for r in st.events_between(T0 - dt.timedelta(hours=1), T0 + dt.timedelta(hours=1)))
+
+
+def test_aviation_announcements_not_repeated_after_restart(tmp_path):
+    from veghe.timeutil import now as real_now
+
+    t = real_now()                                                # starea salvată se restaurează doar dacă e recentă
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    s = AM.summary(MIL, "Iași 150 NM", 47.1, 27.6, 150)
+    assert len(e.process(sig(s, role="adsb_militar", t=t), t)) == 1
+    em = {"code": "7700", "meaning": "urgență", "dist_km": 22.0, "bearing": "NE", "alt_ft": 24000, "category": "A3", "new": True}
+    assert len(e.process(sig(adsb_meta(emergencies=[em]), t=t), t)) == 1
+    e2 = eng(st)                                                  # repornire în mijlocul incidentului
+    t2 = t + dt.timedelta(minutes=3)
+    assert e2.military_announced == 1
+    assert e2.process(sig(s, role="adsb_militar", t=t2), t2) == []
+    assert e2.process(sig(adsb_meta(emergencies=[em]), t=t2), t2) == []      # aceeași urgență, în 10 min

@@ -390,7 +390,8 @@ def test_alerts_in_ua_keeps_last_modified_only_after_successful_parse():
 def test_adsb_radius_is_integer_in_url():
     a = C.Adsb("http://h/{lat}/{lon}/{radius}", [{"name": "p", "lat": 1, "lon": 2, "radius_nm": 40.0}])
     urls = []
-    a._get = lambda url, headers=None: urls.append(url) or http.Response(200, {}, b'{"ac": []}')
+    body = json.dumps({"ac": [], "now": int(T0.timestamp() * 1000)}).encode()
+    a._get = lambda url, headers=None: urls.append(url) or http.Response(200, {}, body)
     a.poll(T0)
     assert urls == ["http://h/1/2/40"]
 

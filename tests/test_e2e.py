@@ -576,3 +576,61 @@ def test_adsb_collector_fallback_order_and_api_key(monkeypatch):
     a._get = lambda url, headers=None: (_ for _ in ()).throw(OSError("totul e jos"))
     with pytest.raises(OSError):
         a.poll(dt.datetime.now(UTC))
+
+
+def test_adsb_unusable_answer_uses_fallback_and_blind_source_raises():
+    from veghe import collectors as C
+    from veghe import http
+
+    a = C.Adsb("https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}", [{"name": "LRIA", "lat": 47.1, "lon": 27.6}],
+               fallback_templates=["https://api.airplanes.live/v2/point/{lat}/{lon}/{radius}"], min_request_gap_s=0,
+               api_key="k", military={"lat": 47.1, "lon": 27.6})
+    fresh = json.dumps({"now": int(time.time() * 1000), "ac": []}).encode()
+    calls = []
+
+    def get(url, headers=None):
+        calls.append((url, dict(headers or {})))
+        if "adsb.lol" in url:
+            return http.Response(200, {}, b'{"error": "API key required"}')     # 200, dar fără date
+        return http.Response(200, {}, fresh)
+
+    a._get = get
+    sigs = a.poll(dt.datetime.now(UTC))
+    civil = [s for s in sigs if s.role == "adsb"][0]
+    assert civil.meta["coverage"]["ok"] and civil.meta["sursa_date"] == "rezervă 1"
+    assert "/47.1/27.6/150" in calls[-1][0]                     # zona militară implicit 150 NM, nu 30
+    assert all("X-API-Key" not in h for u, h in calls if "airplanes.live" in u)
+    a._get = lambda url, headers=None: http.Response(200, {}, b'{"error": "x"}')
+    with pytest.raises(C.AdsbNoData):
+        a.poll(dt.datetime.now(UTC))
+    a2 = C.Adsb("https://adsb.lol.example.net/{lat}/{lon}/{radius}", [{"name": "p", "lat": 1, "lon": 2}], api_key="k",
+                min_request_gap_s=0)
+    seen = []
+    a2._get = lambda url, headers=None: seen.append(dict(headers or {})) or http.Response(200, {}, fresh)
+    a2.poll(dt.datetime.now(UTC))
+    assert "X-API-Key" not in seen[0]                            # cheia doar spre adsb.lol real
+
+
+def test_adsb_config_errors_are_clear(tmp_path, upstream, env):
+    from veghe.config import ConfigError
+
+    p = write_config(tmp_path, upstream.base, "\n[sources.adsb.military]\nlat = \"47.1\"\nlon = 27.6\n")
+    with pytest.raises(ConfigError):
+        App(load(str(p)))
+    p = write_config(tmp_path, upstream.base)
+    p.write_text(p.read_text(encoding="utf-8").replace("[sources.adsb]\n", '[sources.adsb]\ncontrol_point = "Control"\n'),
+                 encoding="utf-8")
+    with pytest.raises(ConfigError, match="control_point"):
+        App(load(str(p)))
+
+
+def test_clock_skew_checked_only_after_successful_read(tmp_path, upstream, env):
+    app = App(load(str(write_config(tmp_path, upstream.base))))
+    c = app.collectors[0]
+    c.last_date = "Mon, 01 Jan 2024 00:00:00 GMT"              # antet vechi, de la o citire reușită de demult
+    c.poll = lambda t: (_ for _ in ()).throw(OSError("jos"))
+    app.next_due = {k: (0 if k == c.name else float("inf")) for k in app.next_due}
+    app.run_cycle()
+    app.drain()
+    app.run_cycle()
+    assert app.clock_skew_s is None
