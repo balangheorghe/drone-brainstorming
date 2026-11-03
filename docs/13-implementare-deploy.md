@@ -4,12 +4,13 @@
 
 ## Ce face serviciul `veghe`
 
-- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, administrațiile Odesa, Cernăuți, Izmail), presa și Moldpres (RSS, Google News), trafic aerian civil (adsb.lol).
+- **Citește** sursele publice din [11](11-fluxuri-date-harti.md): alerte UA (alerts.in.ua, ukrainealarm, canalul `air_alert_ua`), canale Telegram publice (Forțele Aeriene UA, administrațiile Odesa, Cernăuți, Izmail), presa și Moldpres (RSS, Google News), trafic aerian din ADS-B (adsb.lol, cu rezervă airplanes.live, opțional receptor propriu) și NOTAM-uri (ROMATSA; opțional FAA pentru R. Moldova).
 - **Arhivează** fiecare mesaj în SQLite, cu ora de publicare și ora la care l-a primit (pentru măsurarea avansului real).
 - **Aplică regulile** din [07](07-arhitectura-sistem.md): VIGILENȚĂ → DIRECȚIE → MOLDOVA → APROPIERE → OFICIAL, cu ETA în intervalul 450/150 km/h.
 - **Trimite mesaje INTERNE** într-un grup Telegram privat (și opțional ntfy). La fiecare pornire trimite „veghe pornit”, ca să știți că livrarea merge.
 - **Mesaje PUBLICE:** doar retransmiteri ale RO-Alert-urilor relatate de presa/autoritățile românești și încetarea alertei; **niciodată** conținut din canalele ucrainene; **numai după aprobarea unui operator** (`/aproba N`). Canalul public e oprit implicit.
-- **Aeronavele militare** sunt ignorate complet la citire (nici măcar nu se numără); se păstrează doar numărători de aeronave civile.
+- **Aviație:** detectează închiderea sau ocolirea spațiului aerian (traficul civil scade față de fondul recent, verificat cu o zonă de control), avioane civile în așteptare sau întoarse din drum, coduri de urgență și interferențe GPS; citește NOTAM-urile de restricție. Detalii: secțiunea „Aviație” de mai jos.
+- **Aeronave militare** (din datele ADS-B publice): doar un rezumat pe tipuri generale, distanță și direcție aproximative, **doar în grupul privat**; fără identități, fără trasee, nimic arhivat.
 - **Siguranță la livrare:** botul refuză să trimită mesaje interne dacă „grupul intern” e de fapt un canal sau un grup public; refuză ntfy.sh fără token; comenzile sunt acceptate doar de la operatori, doar din grupul intern sau din chat privat, și doar dacă sunt recente (sub 10 minute).
 - **Te anunță când orbește:** dacă o sursă cade (3 erori la rând), primiți „SURSĂ CĂZUTĂ”; la revenire, „Sursa … a revenit”. Dacă bucla principală se blochează peste 5 minute, procesul iese, iar Docker/systemd îl repornește. Cu systemd, dacă portul paginii de stare e ocupat, doar pagina nu pornește; alertele continuă (cu Docker, vedeți mai jos `VEGHE_HOST_PORT`).
 
@@ -45,11 +46,12 @@ Exemplu: `docker compose run --rm veghe report --since 2026-11-01T14:00:00Z`.
 | **Revizuire de cod independentă** (4 direcții: corectitudine, siguranță/OPSEC, funcționare 24/7, fidelitatea formatelor) | 49 de constatări, aproape toate confirmate prin reproducere; **toate cele relevante corectate**, fiecare cu test de regresie | vezi istoricul git (commit „Corecturi după revizuirea de cod”) |
 | **A doua verificare independentă** (reverificarea corecturilor + căutarea de defecte noi) | 35 de corecturi confirmate; 13 defecte noi introduse de corecturi (ex. o sursă care „picură” date, coadă blocată de reîncercări, articole întârziate) – **toate corectate**, cu teste | |
 | **Verificarea dinaintea unirii în `master`** (instalare pas cu pas cu Docker și cu systemd, revizuirea ultimelor modificări, documentație vs. cod; fiecare constatare reverificată independent) | prima trecere: 32 de constatări confirmate, unele găsite de mai mulți verificatori (ex. ID de grup greșit = alerte pierdute fără avertizare, port ocupat = serviciu oprit, depozit privat, comenzi care nu mergeau pe serverul cu Docker); a doua trecere, pe corecturi: 12 constatări (ex. portul 8080 ocupat oprea containerul, `data/` fără drept de scriere nedetectat) – **toate corectate**, cu teste | |
-| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (113 teste în total, pe Python 3.11–3.13) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
+| **Teste** (geografie, analiza textului uk/ru/ro, parsere, motor, livrare, linie de comandă) | trec (352 de teste în total, pe Python 3.11–3.13) | distanțele coincid cu documentele; parserele citesc fixturile construite după **clienții oficiali** (alerts-in-ua, UkraineAlarm, Home Assistant), **selectorii RSSHub** pentru t.me/s și **documentația readsb** |
 | **Scenarii reale** (8.09 și 31.10.2026) | trec | succesiunea de niveluri e cea așteptată; primul mesaj intern vine înaintea retransmiterii RO-Alert; zero conținut ucrainean în mesajele publice |
 | **Test complet cu servere simulate** | trece | configurare din TOML + secrete din mediu, autentificarea corectă la API-uri, deduplicare, trimitere pe Telegram, mesajul de test și cel de pornire, erorile Telegram explicate (token/ID greșit, bot scos), refuzul comenzilor neautorizate, modul fără operatori, `check-sources`, pagina de stare |
 | **Imaginea Docker** | construită și pornită | `docker compose build` reușește; `check-sources` rulează în container (inclusiv mesajul de test către un Telegram simulat și verificarea `data/`); healthcheck „healthy”; `/health` și `/status` răspund; „veghe pornit” la pornire; port ocupat → `VEGHE_HOST_PORT`; oprire curată la `docker compose stop`; baza de date se creează în `data/` cu drepturi doar pentru serviciu |
 | **Rulare reală a serviciului** (fără acces la surse) | merge | bucla nu cade la erori de rețea, aplică pauze progresive (de la 2× intervalul sursei, până la 15 min), oprire curată la SIGTERM |
+| **Module NOTAM și ADS-B** (cercetare pe surse primare, construcție, revizuire adversarială cu teste de mutație) | trec | formatele ROMATSA WFS, FAA NMS, readsb/adsb.lol (câmpuri NIC/NACp, `gpsOkBefore`, `dbFlags`) sunt luate din codul și fixturile publice ale proiectelor care le folosesc; ROMATSA și adsb.lol **nu** au putut fi interogate din sesiune → se verifică cu `check-sources` pe server |
 | **Surse reale (live) și Telegram real** | **nevalidat aici** | rețeaua sesiunii de dezvoltare blochează Telegram, API-urile ucrainene, Google News și adsb.lol. **Validarea live = `check-sources` pe server** (inclusiv mesajul de test în grup) |
 
 **Ce înseamnă „validat” aici:** logica, parserele și livrarea sunt testate pe formate reale (preluate din clienții oficiali și din sursele RSSHub/readsb) și pe incidentele reale reluate. **Nu** înseamnă că sursele reale răspund exact așa azi: asta se vede doar cu `check-sources` pe server.
@@ -59,7 +61,7 @@ Exemplu: `docker compose run --rm veghe report --since 2026-11-01T14:00:00Z`.
 Configurarea implicită e deja așa:
 
 - `public_enabled = false` → nimic nu pleacă public, deci **nu aveți nimic de aprobat**;
-- toate mesajele interne vin **automat** în grupul Telegram privat: VIGILENȚĂ, DIRECȚIE, ATENȚIE, APROPIERE, OFICIAL, ÎNCETARE, DE VERIFICAT (titlu de presă cu încetare *și* alertă nouă – merită citit), ADS-B (trafic civil oprit), SURSĂ CĂZUTĂ / „Sursa … a revenit”, „veghe pornit”;
+- toate mesajele interne vin **automat** în grupul Telegram privat: VIGILENȚĂ, DIRECȚIE, ATENȚIE, APROPIERE, OFICIAL, ÎNCETARE, DE VERIFICAT (titlu de presă cu încetare *și* alertă nouă – merită citit), ADS-B (trafic civil oprit sau mult redus, avioane în așteptare/întoarse, cod de urgență), GNSS (interferență GPS), ADS-B MILITAR (doar avioane de luptă sau drone), NOTAM (restricții noi lângă Iași/Prut sau în R. Moldova; anulare/expirare), SURSĂ CĂZUTĂ / „Sursa … a revenit”, „veghe pornit”;
 - RO-Alert-ul e preluat **automat din presă**; nu trebuie înregistrat;
 - comenzile (`/stare`, `/roalert` …) sunt opționale.
 
@@ -67,6 +69,28 @@ Singurele acțiuni: instalarea o dată și `check-sources` la început. În rest
 - APROPIERE fără RO-Alert sugerează anunțarea ISU/112 – la latitudinea voastră;
 - mesajul despre **ceasul serverului** → porniți sincronizarea: `sudo timedatectl set-ntp true`;
 - o **SURSĂ CĂZUTĂ care nu revine** (zile) → corectați sau scoateți sursa din `config.toml` (vezi mai jos ce înseamnă ✗), apoi reporniți: `docker compose up -d --force-recreate` sau `sudo systemctl restart veghe` (configurarea se citește doar la pornire). Restul surselor merg în continuare.
+
+## Aviație: ADS-B, aeronave militare, NOTAM
+
+**Ce poate și ce nu:** dronele de tip Shahed **nu** transmit ADS-B, deci nu pot fi văzute direct. Aviația dă semnale **indirecte**: închideri de spațiu aerian, avioane deviate, bruiaj GPS, reacția aviației militare. Toate mesajele de mai jos sunt interne și informative; niciunul nu ridică singur nivelul de alertă.
+
+| Mesaj | Când apare | Cum se evită alarmele false |
+|---|---|---|
+| **ADS-B: trafic oprit** | traficul civil din jurul Iași/Chișinău scade de la fondul obișnuit la 0, de 3 ori la rând | se trimite doar în vigilență sau cu o ipoteză deschisă; zona de control (Transilvania) trebuie să fie normală și datele proaspete – altfel e „lipsă de date”, nu închidere |
+| **ADS-B: trafic mult redus (ocolire)** | traficul scade sub 30 % din fondul ultimelor ore (dar nu la 0), de 3 ori la rând | aceleași condiții ca mai sus |
+| **ADS-B: așteptări / întoarceri** | avioane civile care se rotesc în așteptare (≥ 12 NM de drum cu deplasare mică) sau care se întorc ≥ 150° de pe rută | ≥ 2 aeronave în vigilență, ≥ 3 oricând; nu se numără avioanele mici, elicopterele și cele joase; întoarcerile joase de lângă aeroport (apropieri obișnuite) sunt ignorate |
+| **ADS-B: URGENȚĂ 7700/7600/7500** | o aeronavă civilă transmite un cod de urgență în cel puțin 2 citiri (7500: 3) | o singură dată pe aeronavă și cod; aeronava nu e identificată |
+| **GNSS** | > 10 % din aeronavele civile din zonă raportează poziție GPS degradată (NACp < 8 / NIC < 7) sau au pierdut GPS-ul | **începe abia după 3 zile** de fond măsurat (zona Mării Negre are bruiaj frecvent); maxim 4 mesaje/zi/zonă |
+| **ADS-B MILITAR** | apar avioane de luptă sau drone militare vizibile public în raza de 150 NM de Iași | AWACS, cisterne, transport apar doar în `/stare` și ca notă la alte mesaje (zboară des deasupra României); maxim un mesaj la 20 min |
+| **NOTAM** | NOTAM nou: spațiu aerian închis, zboruri UAS/drone, interferențe GNSS, aeroport Iași/Chișinău/Bălți închis, restricții cu drone sau în R. Moldova – lângă Iași/Prut sau în FIR Chișinău | restricțiile militare de rutină și cele departe se arhivează fără mesaj; mai multe NOTAM-uri în 10 min vin într-un singur mesaj; reemiterile lunare nu se reanunță |
+
+**Aeronave militare – reguli:** rezumatul conține doar tipul general (avion de luptă, dronă, avion radar/recunoaștere, avion-cisternă, transport, elicopter), distanța rotunjită la 10 km și direcția pe 8 puncte. **Nu redistribuiți aceste mesaje**: publicarea pozițiilor aeronavelor militare în timpul unei operațiuni poate ajuta adversarul și poate avea consecințe legale. Avioanele de poliție aeriană zboară des fără ADS-B: **absența lor nu înseamnă nimic**. Oprire: `military = { enabled = false, … }` în `config.toml`.
+
+**NOTAM – surse:**
+- **ROMATSA** (România, FIR București) – implicit, fără cheie. Include zonele restricționate de la granița cu R. Moldova și Ucraina. Serverul ROMATSA are o configurație TLS veche; programul încearcă automat o setare compatibilă, fără să dezactiveze verificarea certificatului.
+- **FAA NOTAM Management Service** – singura sursă găsită care ar putea avea NOTAM-urile R. Moldova (FIR Chișinău). Cere credențiale: scrieți la notams@faa.gov și cereți acces la NMS-API (producție); primiți un client_id și un client_secret, pe care le puneți în `.env` (`FAA_NMS_CLIENT_ID`, `FAA_NMS_CLIENT_SECRET`), apoi `enabled = true` la sursa `faa` din `config.toml`. Nu e confirmat că FAA dă acces persoanelor din afara SUA, nici că NMS conține NOTAM-urile Moldovei.
+
+**Praguri:** toate sunt propuneri inițiale (în `[sources.adsb.analysis]`), de reglat după câteva săptămâni de date. Programul păstrează doar agregate pe zonă (câte avioane, câte cu GPS degradat), niciodată identități sau trasee.
 
 ## Deploy: de ce aveți nevoie
 
@@ -167,6 +191,25 @@ sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.11
 - Pornire, din folderul proiectului: `python3.11 -m veghe check-sources`, apoi `python3.11 -m veghe run` (Ctrl-C oprește). Fișierul `.env` de lângă `config.toml` e citit automat. Pe Ubuntu 24.04: `python3` în loc de `python3.11`.
 - După somn/hibernare, ceasul WSL poate rămâne în urmă (serviciul vă anunță): `wsl --shutdown` în PowerShell și redeschideți Ubuntu.
 
+## Receptor ADS-B propriu (opțional)
+
+Agregatoarele publice depind de voluntari; un receptor în Iași dă date sigure pentru zona orașului și deosebește clar „0 avioane” de „lipsă de date”.
+
+| Componentă | Preț aproximativ |
+|---|---|
+| FlightAware Pro Stick Plus (cu filtru 1090 MHz) sau RTL-SDR Blog V4 + filtru 1090 | 35–45 € (filtrul 25–30 €) |
+| Antenă exterioară verticală 1090 MHz, ~5,5 dBi, conector N | 30–60 € |
+| Cablu coaxial cu pierderi mici 5–10 m + adaptor N–SMA | 25–45 € |
+| Descărcător / împământare | 15–25 € |
+| Raspberry Pi 4 (1–2 GB) + sursă oficială + microSD 32 GB „high endurance” + carcasă | 75–110 € |
+| UPS mic (opțional) | 30–60 € |
+
+**Total:** aproximativ 180–280 € (prețuri estimative).
+
+**Amplasare:** acoperiș sau catarg cu orizont liber, mai ales spre est (Prut, R. Moldova); cablu cât mai scurt. Raza teoretică se verifică pe heywhatsthat.com.
+
+**Instalare** (pe Raspberry Pi): scriptul `readsb-install.sh` (wiedehopf/adsb-scripts), apoi `readsb-set-location <lat> <lon>`, câștig automat (`--gain auto`) și, **obligatoriu**, baza de date a aeronavelor (`--db-file /usr/local/share/tar1090/aircraft.csv.gz`; fără ea aeronavele militare nu pot fi deosebite și programul oprește analiza pe aeronavă). Pentru `veghe`: `--net-api-port 8042` (doar local), iar în `config.toml`: `local_url = "http://127.0.0.1:8042/?circle={lat},{lon},{radius}&jv2"` și `local_points = ["LRIA Iași"]`. Opțional, receptorul poate alimenta și adsb.lol (cu `--privacy` la MLAT).
+
 ## Primele 30–90 de zile („mod umbră”)
 
 - Lăsați `public_enabled = false`. Serviciul doar arhivează și trimite mesaje interne.
@@ -182,5 +225,6 @@ sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.11
 - Starea ipotezelor e în memorie: după o repornire, ipotezele deschise se pierd (arhiva rămâne). La prima citire după pornire, știrile fără dată sunt doar arhivate (ca să nu declanșeze alerte vechi).
 - RO-Alert-ul e aflat din presă, nu direct din rețeaua RO-Alert (care nu are flux public). Mesajul „OFICIAL” vine deci la câteva minute după alerta de pe telefon; rolul lui e confirmarea, nu avertizarea timpurie (aceea vine din nivelurile anterioare).
 - Comanda `roalert` din linia de comandă doar arhivează (pentru raport); serviciul pornit află doar prin `/roalert` pe Telegram (cu operatori).
+- ADS-B nu vede dronele; dă doar semnale indirecte (închideri, devieri, bruiaj, reacția aviației militare). Pragurile pentru GNSS, așteptări și ocoliri sunt propuneri, de reglat pe datele adunate. NOTAM-urile R. Moldova cer credențiale FAA (neconfirmat că sunt acolo).
 - Acoperă dronele (inclusiv cele cu reacție). Rachetele nu declanșează DIRECȚIE/ATENȚIE/APROPIERE (prea rapide pentru acest lanț de surse publice): doar VIGILENȚĂ și, dacă presa relatează un RO-Alert, OFICIAL. Aviația militară nu e urmărită; amenințările terestre nu sunt acoperite.
 - Google News RSS nu e un API oficial; poate fi limitat. Previzualizarea t.me/s nu e un API garantat.
