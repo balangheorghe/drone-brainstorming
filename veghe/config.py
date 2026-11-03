@@ -127,6 +127,11 @@ def validate(cfg: Config) -> list[str]:
         if v and not re.fullmatch(r"-?\d+", v):
             warnings.append(f"{name.upper()} = {v[:40]!r} nu e un număr (ex. -1001234567890); verificați .env "
                             f"(fără spații sau comentarii pe același rând)")
+    src = cfg.get("sources", default={}) or {}
+    if src and ("notam" not in src or ((src.get("adsb") or {}).get("enabled") and not (src.get("adsb") or {}).get("control_point"))):
+        warnings.append("config.toml pare din versiunea veche (lipsesc [[sources.notam]] sau sources.adsb.control_point): "
+                        "NOTAM-ul, aeronavele militare și zona de control nu sunt active. Comparați cu config.example.toml "
+                        "(sau copiați-l din nou; secretele sunt în .env și rămân)")
     for n in cfg.get("sources", "notam", default=[]) or []:
         if isinstance(n, dict) and n.get("enabled", True) and n.get("source") == "faa_nms" and not (
                 cfg.secret("faa_nms_client_id") and cfg.secret("faa_nms_client_secret")):

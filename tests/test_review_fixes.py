@@ -647,3 +647,10 @@ def test_missing_config_gives_a_clear_error(tmp_path, capsys):
 
     assert main(["--config", str(tmp_path / "nu-exista.toml"), "check-sources"]) == 2
     assert "config.example.toml" in capsys.readouterr().err
+
+
+def test_old_config_without_new_sections_is_flagged():
+    old = Config({"sources": {"adsb": {"enabled": True, "points": []}, "rss": []}}, {})
+    assert any("versiunea veche" in w for w in validate(old))
+    new = Config({"sources": {"adsb": {"enabled": True, "control_point": "control"}, "notam": [{"name": "romatsa"}]}}, {})
+    assert not any("versiunea veche" in w for w in validate(new))
