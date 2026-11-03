@@ -97,14 +97,57 @@ interval = 300
 # role = "md_news"
 # keywords = ["dron", "spatiul aerian", "spațiul aerian"]
 
-[sources.adsb]                   # trafic aerian CIVIL; aeronavele militare sunt excluse la citire
+[sources.adsb]                   # trafic aerian; nimic din ce se trimite nu identifică o aeronavă
 enabled = true
-interval = 60
-url_template = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
+interval = 60                    # 30 ar îmbunătăți detecția așteptărilor/întoarcerilor (minim 30)
+url_template = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"   # raza se trimite ca întreg (≤ 250 NM)
+# Surse de rezervă, același format, folosite doar dacă prima nu răspunde (1 cerere/s, uz necomercial):
+fallback_templates = ["https://api.airplanes.live/v2/point/{lat}/{lon}/{radius}"]
+min_request_gap_s = 1.1          # pauză minimă între cereri către același server
+# Cheia adsb.lol (ADSBLOL_API_KEY în .env) se trimite doar dacă e setată.
+#
+# Receptor propriu (opțional; vedeți docs/13, „Receptor ADS-B propriu”). OBLIGATORIU readsb cu --db-file,
+# altfel militarii nu pot fi deosebiți și analiza pe aeronavă se oprește (acoperire „fara_db”):
+# local_url = "http://127.0.0.1:8042/?circle={lat},{lon},{radius}&jv2"
+# local_points = ["LRIA Iași"]   # zonele citite din receptorul propriu (restul din agregatorul public)
+control_point = "control"        # zonă largă de control: deosebește o pană de date de o scădere reală
 points = [
+  { name = "control", lat = 46.6, lon = 24.6, radius_nm = 120 },     # Transilvania: departe de Prut și de Marea Neagră
   { name = "LUKK Chișinău", lat = 46.928, lon = 28.931, radius_nm = 40 },
-  { name = "LRIA Iași", lat = 47.178, lon = 27.621, radius_nm = 25 },
+  { name = "LRIA Iași", lat = 47.178, lon = 27.621, radius_nm = 30 },
 ]
+# Aeronave MILITARE din datele publice: doar un rezumat (tip general, ~distanță, direcție), DOAR în grupul
+# privat; nu se păstrează identități sau trasee. Nu redistribuiți pozițiile. Pentru oprire: enabled = false.
+military = { enabled = true, name = "Iași 150 NM", lat = 47.1, lon = 27.6, radius_nm = 150 }
+
+[sources.adsb.analysis]          # praguri (propuneri; de reglat pe istoricul agregat). Toate opționale.
+gnss_enter_ratio = 0.10          # interferență GNSS: > 10 % aeronave cu GPS degradat (banda „roșie” gpsjam)
+gnss_exit_ratio = 0.02
+gnss_min_n = 4                   # sub 4 aeronave eligibile nu se calculează procentul
+maneuver_alert_min = 2           # ≥ 2 aeronave în așteptare / întoarse în 20 min
+turnback_min_deg = 150           # întoarcere: schimbare de direcție ≥ 150°
+drop_zero_polls = 3              # „0 avioane” confirmat în 3 citiri la rând
+
+# ---------------------------------------------------------------- NOTAM (restricții de spațiu aerian)
+# Context oficial pentru motor, nu alertă în sine: multe NOTAM-uri sunt activări militare de rutină.
+# Se anunță imediat doar: spațiu aerian închis, zboruri UAS/drone, interferențe GNSS, aeroport închis
+# (Iași/Chișinău/Bălți), restricții cu drone sau în R. Moldova – lângă Iași/Prut sau în FIR LUUU.
+[[sources.notam]]
+name = "romatsa"                 # FIR București (LRBB), inclusiv zonele restricționate de la granița cu MD/UA
+source = "romatsa_wfs"           # GeoServer public ROMATSA, fără cheie
+enabled = true
+interval = 900                   # secunde (minim 300)
+max_dist_km = 200                # relevant: zona la ≤ 200 km de Iași …
+max_prut_km = 60                 # … sau la ≤ 60 km de Prut
+near_km = 60                     # „aproape” (anunț imediat): ≤ 60 km de Iași …
+near_prut_km = 15                # … sau ≤ 15 km de Prut, dar nu mai departe de 120 km de Iași
+near_prut_max_km = 120
+
+[[sources.notam]]
+name = "faa"                     # FIR Chișinău (LUUU) – singura sursă găsită care l-ar putea avea; NECONFIRMAT
+source = "faa_nms"               # FAA NOTAM Management Service: FAA_NMS_CLIENT_ID și FAA_NMS_CLIENT_SECRET în .env
+enabled = false                  # activați după ce primiți credențialele (cerere la FAA, vedeți docs/13)
+interval = 900
 
 # ---------------------------------------------------------------- livrare
 [notify]

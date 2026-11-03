@@ -24,6 +24,8 @@ from .timeutil import hhmm, iso, now
 log = logging.getLogger("veghe")
 
 # Ce roluri poate primi fiecare tip de sursă (un canal Telegram nu poate genera mesaje publice).
+# instantanee ADS-B: nu se arhivează ca semnale (doar agregate în adsb_samples / adsb_gnss)
+EPHEMERAL_ROLES = ("adsb", "adsb_militar")
 TELEGRAM_ROLES = {"ua_alerts", "ua_direction", "ua_official", "md_official", "md_news"}
 RSS_ROLES = {"md_official", "md_news", "ro_official_news"}
 DOWN_AFTER_ERRORS = 3
@@ -78,8 +80,42 @@ def build_collectors(cfg: Config) -> list[C.Collector]:
                           interval=max(60, num(r.get("interval", 120), "rss.interval")), **kw))
     ad = s.get("adsb", {})
     if ad.get("enabled"):
-        out.append(C.Adsb(ad.get("url_template", "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"),
-                          ad.get("points", []), interval=max(30, num(ad.get("interval", 60), "adsb.interval")), **kw))
+        mil = ad.get("military")
+        if isinstance(mil, dict) and not mil.get("enabled", True):
+            mil = None
+        if mil is not None and not (isinstance(mil, dict) and {"lat", "lon"} <= set(mil)):
+            raise ConfigError("sources.adsb.military trebuie să aibă lat și lon (și opțional radius_nm, name)")
+        try:
+            out.append(C.Adsb(ad.get("url_template", "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"),
+                              ad.get("points", []), interval=max(30, num(ad.get("interval", 60), "adsb.interval")),
+                              fallback_templates=_str_list(ad.get("fallback_templates", []), "adsb.fallback_templates"),
+                              api_key=cfg.secret("adsblol_api_key"), local_url=ad.get("local_url", ""),
+                              local_points=_str_list(ad.get("local_points", []), "adsb.local_points"),
+                              control_point=ad.get("control_point", ""), military=mil,
+                              analysis=ad.get("analysis") or {},
+                              min_request_gap_s=num(ad.get("min_request_gap_s", 1.1), "adsb.min_request_gap_s"), **kw))
+        except TypeError as e:  # cheie necunoscută în [sources.adsb.analysis]
+            raise ConfigError(f"sources.adsb.analysis: {e}") from None
+    from . import notam as N
+
+    for n in s.get("notam", []) or []:
+        if not isinstance(n, dict) or not n.get("enabled", True):
+            continue
+        opts = {k: n[k] for k in ("urls", "watch_firs", "locations", "categories", "nms_host", "tls_ciphers") if k in n}
+        for k in ("max_dist_km", "max_prut_km", "near_km", "near_prut_km", "near_prut_max_km", "nms_radius_nm"):
+            if k in n:
+                opts[k] = num(n[k], f"notam.{k}")
+        if "nms_center" in n:
+            opts["nms_center"] = tuple(n["nms_center"])
+        try:
+            out.append(N.NotamCollector(n.get("name", "romatsa"), n.get("source", "romatsa_wfs"),
+                                        client_id=cfg.secret("faa_nms_client_id"),
+                                        client_secret=cfg.secret("faa_nms_client_secret"),
+                                        interval=num(n.get("interval", 900), "notam.interval"), **opts, **kw))
+        except N.NotamCredentialsError as e:
+            log.warning("notam:%s dezactivat: %s", n.get("name", "faa"), e)
+        except (ValueError, TypeError) as e:
+            raise ConfigError(f"notam:{n.get('name')}: {e}") from None
     names = [c.name for c in out]
     if len(names) != len(set(names)):
         raise ConfigError(f"surse cu același nume: {sorted({n for n in names if names.count(n) > 1})}")
@@ -170,6 +206,9 @@ class App:
         self.flush_in_cycle = True  # în run_forever, livrarea are firul ei
         self.stop = threading.Event()
         # câte un fir per sursă (+rezervă): o sursă blocată nu le poate opri pe celelalte
+        for c in self.collectors:
+            if isinstance(c, C.Adsb):
+                c.attach_store(self.store, now())  # fondul de trafic după repornire (doar agregate)
         self._pool = ThreadPoolExecutor(max_workers=len(self.collectors) + 2, thread_name_prefix="colector")
         self._lock = threading.RLock()
         self.commands = None
@@ -199,9 +238,9 @@ class App:
         n = 0
         with self._lock:
             for s in sorted(sigs, key=lambda x: x.when):
-                if s.role != "adsb" and not self.store.add_signal(s):
+                if s.role not in EPHEMERAL_ROLES and not self.store.add_signal(s):
                     continue  # deja văzut
-                if warmup and s.role not in ("ua_alert_state", "adsb") and s.published_at is None:
+                if warmup and s.role not in ("ua_alert_state", *EPHEMERAL_ROLES) and s.published_at is None:
                     continue
                 msgs = self.engine.process(s, t)
                 self._submit(msgs)
@@ -373,6 +412,18 @@ class App:
             lines.append(f"Stare UA învechită: {', '.join(st['surse_stare_invechite'])}")
         for h in st["ipoteze"]:
             lines.append(f"H-{h['id']} {h['nivel']}{' (oficial)' if h['oficial'] else ''} · {h['pozitie'] or '?'} · {h['actualizat']}")
+        zones = {k: v for k, v in (st.get("adsb_zone") or {}).items() if not v.get("control")}
+        if zones:
+            lines.append("ADS-B: " + "; ".join(
+                f"{k} {v['trafic']} în aer" + (f", date: {v['acoperire']}" if v["acoperire"] != "ok" else "")
+                + (f", GNSS {v['gnss']}" if v.get("gnss") not in (None, "normal", "insuficient") else "")
+                + (f", {v['manevre']} în așteptare/întoarse" if v.get("manevre") else "") for k, v in zones.items()))
+        if st.get("militar"):
+            lines.append(f"Militar (ADS-B public, doar intern) la {st['militar']['la']}: {st['militar']['descriere']}")
+        if st.get("notam_active"):
+            near = [n for n in st["notam_active"] if n["aproape"] or n["fir"] == "LUUU"]
+            lines.append(f"NOTAM active: {len(st['notam_active'])} ({len(near)} lângă Iași/Prut sau în R. Moldova)"
+                         + ("".join(f"\n  · {n['id']} {n['categorie']} până la {n['pana_la']}" for n in near[:5])))
         return "\n".join(lines)
 
     def healthy(self) -> bool:

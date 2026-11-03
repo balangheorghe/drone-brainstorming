@@ -424,15 +424,115 @@ def count_aircraft(data: dict) -> dict:
 
 
 class Adsb(Collector):
-    def __init__(self, url_template: str, points: list[dict], **kw):
+    """Trafic aerian din ADS-B (agregator public și/sau receptor propriu).
+
+    Civil: analiza din veghe.adsb_analysis (scădere reală vs. lipsă de date, interferență GNSS,
+    așteptări, întoarceri, coduri de urgență) – fără identități de aeronave.
+    Militar (opțional, `military`): doar un rezumat pe grupuri, rol „adsb_militar”, doar intern."""
+
+    def __init__(self, url_template: str, points: list[dict], *, fallback_templates=(), api_key: str = "",
+                 local_url: str = "", local_points=(), control_point: str = "", military: dict | None = None,
+                 analysis: dict | None = None, min_request_gap_s: float = 1.1, **kw):
+        from .adsb_analysis import AdsbAnalysisConfig, AdsbAnalyzer
+
         super().__init__("adsb", "adsb", kw.pop("interval", 60), **kw)
-        self.url_template, self.points = url_template, points
+        self.url_template, self.points = url_template, list(points)
+        self.fallback_templates = [t for t in (fallback_templates or []) if t]
+        self.api_key = api_key
+        self.local_url, self.local_points = local_url, set(local_points or [])
+        self.control_point = control_point or None
+        self.military = military
+        self.min_gap = float(min_request_gap_s)
+        self._last_req: dict[str, float] = {}
+        self.analyzer = AdsbAnalyzer(AdsbAnalysisConfig(**(analysis or {})), control_area=self.control_point)
+        self.store = None
+        self.gnss_ready: dict[str, bool] = {}
+        self._gnss_baseline_at = float("-inf")
+
+    # ---------------------------------------------------------------- fond din arhivă (doar agregate)
+    def attach_store(self, store, now: dt.datetime):
+        """După pornire: fondul de trafic din eșantioanele agregate ale ultimelor 2 ore."""
+        self.store = store
+        for p in self.points:
+            rows = store.adsb_samples(p["name"], now - dt.timedelta(hours=2))
+            self.analyzer.seed_counts(p["name"], [(r["ts"], r["civil_airborne"]) for r in rows])
+
+    def _refresh_gnss_baseline(self, now: dt.datetime):
+        import time
+
+        if self.store is None or time.monotonic() - self._gnss_baseline_at < 3600:
+            return
+        self._gnss_baseline_at = time.monotonic()
+        for p in self.points:
+            p90, days = self.store.adsb_gnss_baseline(p["name"], now)
+            self.analyzer.set_gnss_baseline(p["name"], p90)
+            self.gnss_ready[p["name"]] = days >= 3  # mesajele GNSS pornesc după 3 zile de fond
+
+    # ---------------------------------------------------------------- cereri
+    def _fetch(self, template: str, p: dict) -> dict:
+        import time
+        from urllib.parse import urlsplit
+
+        url = template.format(lat=p["lat"], lon=p["lon"], radius=int(p.get("radius_nm", 30)))
+        host = urlsplit(url).netloc
+        wait = self.min_gap - (time.monotonic() - self._last_req.get(host, float("-inf")))
+        if wait > 0:
+            time.sleep(min(wait, 5))
+        headers = {"Accept": "application/json"}
+        if self.api_key and "adsb.lol" in host:
+            headers["X-API-Key"] = self.api_key  # doar dacă e setată (politica adsb.lol se poate schimba)
+        try:
+            return self._get(url, headers).json()
+        finally:
+            self._last_req[host] = time.monotonic()
+
+    def _snapshot(self, p: dict):
+        templates = []
+        if self.local_url and p["name"] in self.local_points:
+            templates.append(self.local_url)
+        templates += [self.url_template] + self.fallback_templates
+        last = None
+        for tpl in templates:
+            try:
+                return self._fetch(tpl, p), None
+            except Exception as e:  # noqa: BLE001 - încercăm sursa următoare
+                last = e
+        return None, last
 
     def poll(self, now):
-        out = []
-        for p in self.points:
-            url = self.url_template.format(lat=p["lat"], lon=p["lon"], radius=int(p.get("radius_nm", 30)))
-            counts = count_aircraft(self._get(url, {"Accept": "application/json"}).json())
-            out.append(Signal(source=self.name, role="adsb", text=f"{p['name']}: {counts['civil_airborne']} civile în aer",
-                              received_at=now, ext_id=f"{p['name']}@{iso(now)}", meta={"point": p["name"], **counts}))
+        from . import adsb_military
+        from .adsb_analysis import aircraft_list, snapshot_meta
+
+        self._refresh_gnss_baseline(now)
+        out, errors = [], []
+        # zona de control prima: altfel comparația folosește datele ciclului anterior
+        for p in sorted(self.points, key=lambda x: x["name"] != self.control_point):
+            data, err = self._snapshot(p)
+            if err is not None:
+                errors.append(err)
+            src = snapshot_meta(data) if data is not None else {"ok": False}
+            r = self.analyzer.update(p["name"], p["lat"], p["lon"], int(p.get("radius_nm", 30)),
+                                     aircraft_list(data) if data is not None else [], now, src)
+            r["is_control"] = p["name"] == self.control_point
+            r.setdefault("gnss", {})["baseline_ready"] = self.gnss_ready.get(p["name"], False)
+            cov = r.get("coverage") or {}
+            text = f"{p['name']}: {r.get('civil_airborne', 0)} civile în aer"
+            if not cov.get("ok", True):
+                text += f" (date: {cov.get('reason')})"
+            out.append(Signal(source=self.name, role="adsb", text=text, received_at=now,
+                              ext_id=f"{p['name']}@{iso(now)}", meta=r))
+        total = len(self.points)
+        if self.military:
+            total += 1
+            m = self.military
+            data, err = self._snapshot({**m, "name": m.get("name", "militar")})
+            if err is not None:
+                errors.append(err)
+            else:
+                s = adsb_military.summary(data, m.get("name", "militar"), m["lat"], m["lon"], m.get("radius_nm", 150))
+                out.append(Signal(source=self.name, role="adsb_militar", received_at=now,
+                                  text=f"Militar (ADS-B public), {m.get('name', 'zona')}: {adsb_military.describe(s)}",
+                                  ext_id=f"militar@{iso(now)}", meta=s))
+        if errors and len(errors) >= total:
+            raise errors[-1]  # nicio cerere reușită: sursa e căzută (vezi starea surselor)
         return out

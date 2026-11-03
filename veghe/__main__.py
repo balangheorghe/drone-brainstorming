@@ -55,13 +55,20 @@ def cmd_check_sources(args):
         newest = max((s.published_at for s in sigs if s.published_at), default=None)
         note = ""
         raw = getattr(c, "last_raw", None)
-        if raw is not None and raw != len(sigs):
+        if c.role == "notam":
+            note = f" (din {raw} NOTAM-uri în sursă; restul nu privesc zona sau nu sunt restricții)" if raw is not None else ""
+        elif raw is not None and raw != len(sigs):
             note = f" (din {raw} în flux; restul nu conțin cuvintele-cheie)"
         elif raw == 0 and "when:" in getattr(c, "url", ""):
             note = " (fluxul caută doar știrile recente; gol când nu e nimic nou)"
         print(f"✓ {c.name:28s} {len(sigs):3d} elemente · cel mai nou: {hhmm(newest) if newest else '-'}{note}")
         for s in sigs[-3:]:
-            extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}" if s.role in ("ua_alert_state", "adsb") else ""
+            extra = ""
+            if s.role == "ua_alert_state":
+                extra = f" {json.dumps(s.meta, ensure_ascii=False)[:160]}"
+            elif s.role == "adsb":
+                g = s.meta.get("gnss") or {}
+                extra = (f" {json.dumps({'civil_airborne': s.meta.get('civil_airborne'), 'acoperire': (s.meta.get('coverage') or {}).get('reason'), 'gnss': g.get('level')}, ensure_ascii=False)}")
             print(f"      · {s.text[:140]}{extra}")
     print(f"\n{ok}/{len(cols)} surse au răspuns corect.")
     skew = clock_skew(cols)

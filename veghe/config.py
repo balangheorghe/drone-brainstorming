@@ -20,6 +20,9 @@ ENV_SECRETS = {
     "ntfy_url": "NTFY_URL",
     "ntfy_topic": "NTFY_TOPIC",
     "ntfy_token": "NTFY_TOKEN",
+    "adsblol_api_key": "ADSBLOL_API_KEY",
+    "faa_nms_client_id": "FAA_NMS_CLIENT_ID",
+    "faa_nms_client_secret": "FAA_NMS_CLIENT_SECRET",
 }
 
 
@@ -124,6 +127,11 @@ def validate(cfg: Config) -> list[str]:
         if v and not re.fullmatch(r"-?\d+", v):
             warnings.append(f"{name.upper()} = {v[:40]!r} nu e un număr (ex. -1001234567890); verificați .env "
                             f"(fără spații sau comentarii pe același rând)")
+    for n in cfg.get("sources", "notam", default=[]) or []:
+        if isinstance(n, dict) and n.get("enabled", True) and n.get("source") == "faa_nms" and not (
+                cfg.secret("faa_nms_client_id") and cfg.secret("faa_nms_client_secret")):
+            warnings.append(f"notam:{n.get('name', 'faa')} (FAA NMS) activat, dar FAA_NMS_CLIENT_ID / "
+                            f"FAA_NMS_CLIENT_SECRET lipsesc → sursa e dezactivată")
     for w in warnings:
         log.warning(w)
     return warnings

@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS adsb_samples (
   civil_total INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_adsb_point_ts ON adsb_samples(point, ts);
+CREATE TABLE IF NOT EXISTS adsb_gnss (
+  ts TEXT NOT NULL,
+  point TEXT NOT NULL,
+  n INTEGER,
+  degraded INTEGER,
+  lost INTEGER,
+  ratio REAL
+);
+CREATE INDEX IF NOT EXISTS ix_adsb_gnss_point_ts ON adsb_gnss(point, ts);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
 CREATE INDEX IF NOT EXISTS ix_outbox_status ON outbox(status, id);
 """
@@ -228,8 +237,34 @@ class Store:
 
     def prune(self, keep_adsb_days: int = 7):
         with self._lock:
-            self._db.execute("DELETE FROM adsb_samples WHERE ts < ?", (iso(now() - dt.timedelta(days=keep_adsb_days)),))
+            cut = iso(now() - dt.timedelta(days=keep_adsb_days))
+            self._db.execute("DELETE FROM adsb_samples WHERE ts < ?", (cut,))
+            self._db.execute("DELETE FROM adsb_gnss WHERE ts < ?", (cut,))
             self._db.commit()
+
+    def add_adsb_gnss(self, ts: dt.datetime, point: str, n: int, degraded: int, lost: int, ratio: float):
+        # doar agregate pe zonă (câte aeronave, câte cu GPS degradat); nicio identitate
+        with self._lock:
+            self._db.execute("INSERT INTO adsb_gnss(ts,point,n,degraded,lost,ratio) VALUES (?,?,?,?,?,?)",
+                             (iso(ts), point, int(n), int(degraded), int(lost), float(ratio)))
+            self._db.commit()
+
+    def adsb_gnss_baseline(self, point: str, at: dt.datetime, days: int = 7, min_n: int = 4) -> tuple[float | None, float]:
+        """(p90 al raportului GNSS degradat pe ultimele `days` zile, câte zile acoperă eșantioanele)."""
+        with self._lock:
+            rows = list(self._db.execute("SELECT ts, ratio FROM adsb_gnss WHERE point=? AND ts>=? AND n>=? ORDER BY ts",
+                                         (point, iso(at - dt.timedelta(days=days)), min_n)))
+        if not rows:
+            return None, 0.0
+        vals = sorted(r["ratio"] for r in rows)
+        p90 = vals[min(len(vals) - 1, int(0.9 * (len(vals) - 1) + 0.5))]
+        span = (parse_iso(rows[-1]["ts"]) - parse_iso(rows[0]["ts"])).total_seconds() / 86400
+        return p90, span
+
+    def signals_by_role(self, role: str, since: dt.datetime) -> list[sqlite3.Row]:
+        with self._lock:
+            return list(self._db.execute("SELECT * FROM signals WHERE role=? AND received_at>=? ORDER BY received_at, id",
+                                         (role, iso(since))))
 
     def adsb_samples(self, point: str, since: dt.datetime) -> list[sqlite3.Row]:
         with self._lock:

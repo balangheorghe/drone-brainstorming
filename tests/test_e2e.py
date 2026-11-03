@@ -24,6 +24,27 @@ FIX = pathlib.Path(__file__).parent / "fixtures"
 TOKEN = "123:TESTTOKEN"
 
 
+MIL_AC = [{"hex": "4b1234", "flight": "SECRET1", "t": "F16", "dbFlags": 1, "alt_baro": 20000,
+           "lat": 47.5, "lon": 28.0, "seen": 1}]
+
+
+def notam_wfs():
+    """Un NOTAM ROMATSA real (F8021/26, zbor UAS lângă Prut), cu validitatea mutată în jurul orei curente."""
+    now = dt.datetime.now(UTC).replace(second=0, microsecond=0)
+    b, c = now - dt.timedelta(hours=1), now + dt.timedelta(hours=8)
+    mesaj = ("(F9021/26 NOTAMN\rQ) LRBB/QWULW/IV/BO /W /000/020/4629N02802E024\r"
+             f"A) LRBB B) {b:%y%m%d%H%M} C) {c:%y%m%d%H%M}\rE) NAVIGATION WARNING.\r"
+             "   UNMANNED ACFT FLT WILL TAKE PLACE INTO THE FLW AREA:\r"
+             "   460705N0275910E-460630N0280656E-462535N0281533E-463840N0281446E\r"
+             "   464732N0280949E-465039N0280627E-465145N0275759E-462845N0280343E\r"
+             "   460705N0275910E\r   EXCEPT CHISINAU FIR\rF) GND G) 2000FT AMSL)\r")
+    ring = [[27.986112, 46.118056], [28.2575, 46.43], [28.24, 46.85], [27.96, 46.86], [27.986112, 46.118056]]
+    return {"type": "FeatureCollection", "totalFeatures": 1, "numberMatched": 1, "numberReturned": 1, "features": [
+        {"type": "Feature", "id": "restrictii_notam_pt_uav.1", "geometry": {"type": "Polygon", "coordinates": [ring]},
+         "geometry_name": "the_geom", "properties": {"serie": "F9021/2026", "dfrom": b.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                     "dto": c.strftime("%Y-%m-%dT%H:%M:%SZ"), "mesaj": mesaj, "tip": "O"}}]}
+
+
 class Upstream:
     def __init__(self):
         self.sent = []
@@ -56,7 +77,13 @@ class Upstream:
             xml = (FIX / "feed_rss.xml").read_text(encoding="utf-8").replace("Sat, 31 Oct 2026 15:05:00 GMT", self.rfc)
             return 200, "application/rss+xml", xml
         if path.startswith("/adsb/v2/point/"):
-            return 200, "application/json", (FIX / "adsb_point.json").read_text()
+            d = json.loads((FIX / "adsb_point.json").read_text())
+            d["now"] = d["ctime"] = int(time.time() * 1000)  # instantaneu proaspăt (altfel „date vechi”)
+            if path.startswith("/adsb/v2/point/47.1/27.6/"):  # zona militară din testele de mai jos
+                d["ac"] = MIL_AC
+            return 200, "application/json", json.dumps(d)
+        if path == "/notam/wfs":
+            return 200, "application/json", json.dumps(notam_wfs())
         if path == "/broken":
             return 200, "text/html", "<html>nu e RSS</html>"
         if path == f"/tg/bot{TOKEN}/sendMessage":
@@ -488,3 +515,64 @@ def test_check_sources_explains_filtered_feed_and_clock_skew(tmp_path, upstream,
     out = capsys.readouterr().out
     assert "rss:md" in out and "în flux; restul nu conțin cuvintele-cheie" in out
     assert "e cu ~40 min în urmă față de surse" in out
+
+
+
+NEW_SOURCES = """
+[[sources.notam]]
+name = "romatsa"
+source = "romatsa_wfs"
+urls = ["{base}/notam/wfs"]
+interval = 300
+"""
+
+
+def test_notam_and_military_reach_internal_group_only(tmp_path, upstream, env):
+    extra = NEW_SOURCES.format(base=upstream.base) + (
+        '\n[sources.adsb.military]\nname = "Iași 150 NM"\nlat = 47.1\nlon = 27.6\nradius_nm = 150\n')
+    p = write_config(tmp_path, upstream.base, extra)
+    txt = p.read_text(encoding="utf-8").replace("[sources.adsb]\n", "[sources.adsb]\nmin_request_gap_s = 0\n")
+    p.write_text(txt, encoding="utf-8")
+    app = App(load(str(p)))
+    assert [c for c in app.collectors if c.name == "adsb"][0].military
+    assert "notam:romatsa" in [c.name for c in app.collectors]
+    cycle(app)
+    internal = [m["text"] for m in upstream.sent if m["chat_id"] == "-1001"]
+    assert any(t.startswith("[INTERN] NOTAM") and "F9021/26" in t for t in internal)
+    mil = [t for t in internal if "ADS-B MILITAR" in t]
+    assert len(mil) == 1 and "avion de luptă" in mil[0] and "SECRET1" not in mil[0] and "4b1234" not in mil[0]
+    public = [m for m in upstream.sent if m["chat_id"] == "-2002"]
+    assert not any("NOTAM" in m["text"] or "MILITAR" in m["text"] for m in public)
+    # instantaneele ADS-B (civile și militare) nu se arhivează ca semnale; NOTAM-ul da
+    roles = {r["role"] for r in app.store.recent_signals(200)}
+    assert "notam" in roles and "adsb" not in roles and "adsb_militar" not in roles
+    assert "NOTAM active: 1" in app.status_text(dt.datetime.now(UTC))
+    assert app.store.adsb_samples("LUKK", dt.datetime.now(UTC) - dt.timedelta(hours=1))
+
+
+def test_adsb_collector_fallback_order_and_api_key(monkeypatch):
+    from veghe import collectors as C
+
+    a = C.Adsb("https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}",
+               [{"name": "LRIA", "lat": 47.1, "lon": 27.6, "radius_nm": 30},
+                {"name": "control", "lat": 46.6, "lon": 24.6, "radius_nm": 120}],
+               fallback_templates=["https://api.airplanes.live/v2/point/{lat}/{lon}/{radius}"], api_key="k",
+               control_point="control", min_request_gap_s=0)
+    calls = []
+
+    def fake_get(url, headers=None):
+        calls.append((url, dict(headers or {})))
+        if "adsb.lol" in url and "/47.1/" in url:
+            raise OSError("jos")
+        from veghe import http
+        return http.Response(200, {}, json.dumps({"now": int(time.time() * 1000), "ac": []}).encode())
+
+    a._get = fake_get
+    sigs = a.poll(dt.datetime.now(UTC))
+    assert [s.meta["point"] for s in sigs] == ["control", "LRIA"]           # zona de control prima
+    assert calls[0][0].startswith("https://api.adsb.lol/v2/point/46.6/24.6/120") and calls[0][1]["X-API-Key"] == "k"
+    assert calls[2][0].startswith("https://api.airplanes.live") and "X-API-Key" not in calls[2][1]
+    assert all(s.meta["coverage"]["ok"] for s in sigs)
+    a._get = lambda url, headers=None: (_ for _ in ()).throw(OSError("totul e jos"))
+    with pytest.raises(OSError):
+        a.poll(dt.datetime.now(UTC))
