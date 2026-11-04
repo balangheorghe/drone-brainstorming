@@ -347,3 +347,11 @@ def test_placeless_echo_window_survives_restart(tmp_path):
     e2 = eng(st)
     e2._restore_hyps(m(30))
     assert md(e2, m(30), ECHO_3) == []
+
+
+def test_placeless_lost_from_radar_echo_after_ttl_is_silent():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    for k in range(1, 61):
+        e.tick(m(k))                                                   # ipoteza s-a închis (45 min)
+    assert md(e, m(60), "Drona care a survolat R. Moldova a dispărut de pe radar, informează MApN") == []
