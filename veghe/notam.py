@@ -928,7 +928,21 @@ def notam_meta(n: Notam, kind: str, category: str, d_target: float | None, d_pru
         # 2000 e oricum întreg în fereastra de 4000, deci nu rămâne pe jumătate
         "text": scrub_text((n.text or "")[:4000])[:2000], "text_hash": content_hash(n),
         "dist_iasi_km": d_target, "dist_prut_km": d_prut, "near": near, "area": area_kind(n),
+        "dist_tinte_km": target_distances(n),
     }
+
+
+def target_distances(n: Notam) -> dict | None:
+    """km de la zona precisă (poligonul sursei sau coordonatele din E)) până la orașele din Nord-Est;
+    None fără poligon (motorul folosește atunci cercul Q)."""
+    rings = _geometry(n)[1]
+    if not rings:
+        return None
+    out = {}
+    for k in geo.NE_TARGETS:
+        p = geo.TARGET_KEYS.get(k) or geo.BY_KEY[k]
+        out[p.key] = round(min(_point_ring_km(p.lat, p.lon, r) for r in rings), 1)
+    return out
 
 
 # ---------------------------------------------------------------------------

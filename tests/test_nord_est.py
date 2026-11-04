@@ -1,7 +1,8 @@
-"""Suceava ca a doua țintă: distanțe/ETA față de cea mai apropiată țintă, NOTAM lângă Suceava și LRSV,
-zona ADS-B LRSV și raioanele din nordul Bucovinei în configurația de exemplu."""
+"""Nord-Estul ca ținte (Iași, Suceava, Botoșani, Piatra Neamț, Bacău, Vaslui): distanțe/ETA față de cel mai
+apropiat oraș, NOTAM lângă orașe și aeroporturi, zonele ADS-B, nordul Bucovinei, repornire și regresiile verificării."""
 
 import datetime as dt
+import json
 import pathlib
 
 from veghe import app, geo
@@ -214,6 +215,9 @@ def test_notam_near_bacau_names_the_city_survives_restart_and_shows_in_status(tm
     s = nsig(m)
     st.add_signal(s)
     out = e.process(s, T0)
+    assert len(out) == 1 and "în zona orașului Bacău:" in out[0].text            # zona include orașul
+    far = notam_meta(id="F8210/26", key="LR:F8210/26", lat=46.80, lon=26.95, radius_nm=3)   # ~20 km de Bacău
+    out = ne_eng().process(nsig(far), T0)
     assert len(out) == 1 and "lângă Bacău (~" in out[0].text
     assert e.status(T0)["notam_active"][0]["aproape"] and "Bacău" in e.status(T0)["tinte"]
     orig = timeutil.now
@@ -241,3 +245,93 @@ def test_vigilance_restart_after_target_list_change_is_silent(tmp_path):
     new._restore_vigilance(mins(25))
     # aceeași alertă, după pauză: 75 km de Suceava nu înseamnă „s-a extins mai aproape”
     assert alert_state(new, "Чернівецький район", mins(25)) == []
+
+
+# ------------------------------------------------------------------ a doua verificare: „lansate spre Ucraina”
+APPROACH_TEXTS = [
+    # fundalul „lansate spre Ucraina” + „a dispărut de pe radar” lângă Prut: rămâne APROPIERE
+    "Una dintre dronele lansate de Rusia spre Ucraina a pătruns în spațiul aerian al R. Moldova și a dispărut de pe radar "
+    "în apropiere de Fălești.",
+    "O dronă lansată spre Ucraina a deviat de la traseu și a părăsit spațiul aerian în zona raionului Glodeni.",
+    # intrare din Ucraina în R. Moldova (nu o plecare)
+    "Drona lansată spre Ucraina a părăsit spațiul aerian ucrainean și a pătruns în R. Moldova pe la Ocnița.",
+    "Drona, lansată spre Ucraina, a părăsit spațiul aerian al R. Moldova la Glodeni și a pătruns în spațiul aerian românesc.",
+    "Беспилотник, запущенный в сторону Украины, исчез с радаров в районе Фэлешт.",
+    "Беспилотник пересёк воздушное пространство Молдовы и направился в сторону Румынии в районе Унген.",
+]
+EXIT_TEXTS = [
+    "Drona a părăsit spațiul aerian al R. Moldova pe la Otaci, revenind în Ucraina.",
+    "Ministerul Apărării: drona a ieșit din spațiul aerian al Republicii Moldova pe la Otaci, înapoi în Ucraina.",
+    "Drona a părăsit spațiul aerian al R. Moldova pe la Otaci, întorcându-se în Ucraina.",
+    "Drona a ieșit din spațiul aerian moldovenesc la Otaci și a intrat în spațiul aerian ucrainean.",
+    "Беспилотник покинул воздушное пространство Молдовы у Отачь в направлении Украины.",
+]
+
+
+def test_launched_toward_ukraine_background_does_not_downgrade_real_approach():
+    for text in APPROACH_TEXTS:
+        out = md(ne_eng(), text)
+        assert [x.kind for x in out] == ["apropiere"], text
+
+
+def test_exits_toward_ukraine_far_from_prut_are_not_approach():
+    for text in EXIT_TEXTS:
+        e = ne_eng()
+        md(e, "O dronă a fost observată în raionul Soroca")
+        out = md(e, text, mins(15))
+        assert all(x.kind != "apropiere" for x in out), text
+
+
+def test_exit_wording_near_prut_never_downgraded():
+    # lângă Prut (Edineț ~35 km) chiar și „spre Ucraina” rămâne apropiere: acolo o greșeală ar costa o alertă
+    out = md(ne_eng(), "Drona a părăsit spațiul aerian al R. Moldova la Edineț, spre Ucraina.")
+    assert [x.kind for x in out] == ["apropiere"]
+
+
+def test_hliboca_idioms_do_not_create_a_place():
+    from veghe.nlp import analyze
+
+    for text in ("Атака тривала до глибокої ночі", "Дрони летять на глибоку відстань", "у глибокій темряві",
+                 "З глибокою стурбованістю стежимо", "З глибокою скорботою повідомляю: внаслідок атаки дронів на Одесу"):
+        assert "hlyboka" not in [p.key for p in analyze(text).places], text
+    for text in ("БпЛА курсом на Глибоку", "в бік Глибокої", "Шахед біля Глибокої", "Глибоцька громада"):
+        assert "hlyboka" in [p.key for p in analyze(text).places], text
+
+
+def test_romanian_adjective_cancels_toward_ukraine():
+    from veghe.nlp import analyze
+
+    f = analyze("Drona a părăsit spațiul aerian al R. Moldova spre Ucraina, apoi a pătruns în spațiul aerian românesc.")
+    assert not f.toward_ua
+    assert analyze("Drona a părăsit spațiul aerian al R. Moldova pe la Otaci, revenind în Ucraina.").toward_ua
+
+
+def test_vigilance_restart_without_areas_resets_distance_from_other_targets(tmp_path):
+    import json
+
+    from veghe.store import Store
+    from veghe.timeutil import iso as _iso
+
+    st = Store(str(tmp_path / "v.db"))
+    # stare salvată de o versiune doar-Iași: anunțat, distanță 177 km (Cernăuți–Iași), fără zone
+    st.kv_set("stare_vigilenta", json.dumps({"la": _iso(T0), "since": _iso(T0), "msg_at": _iso(T0), "announced": True,
+                                              "best_km": 177.0, "titles": [], "areas": []}))
+    e = ne_eng(st)
+    e._restore_vigilance(mins(25))
+    assert e.vigilance_best_km is None
+    assert alert_state(e, "Чернівецький район", mins(25)) == []        # fără „s-a extins mai aproape de Suceava”
+
+
+def test_notam_polygon_distance_overrides_q_circle():
+    from veghe import notam as N
+
+    # cercul Q (30 NM) atinge Bacăul, dar poligonul real e la 79 km: fără mesaj
+    m = notam_meta(id="F8300/26", key="LR:F8300/26", lat=46.75, lon=27.3, radius_nm=30,
+                   dist_tinte_km={"bacau": 79.0, "vaslui": 70.0, "suceava": 150.0, "botosani": 130.0, "piatra_neamt": 110.0})
+    assert ne_eng().process(nsig(m), T0) == []
+    # colectorul pune distanțele precise în meta pentru zonele cu poligon
+    ns = N.parse_romatsa_wfs(json.loads((ROOT / "tests" / "fixtures" / "notam_romatsa_wfs.json").read_text(encoding="utf-8")))
+    poly = [n for n in ns if n.polygons]
+    assert poly
+    d = N.target_distances(poly[0])
+    assert set(d) == {"iasi", "suceava", "botosani", "piatra_neamt", "bacau", "vaslui"}

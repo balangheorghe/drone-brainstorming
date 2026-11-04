@@ -362,6 +362,7 @@ class Engine:
               "msg_at": iso(self.vigilance_msg_at) if self.vigilance_msg_at else None,
               "announced": self.vigilance_announced, "best_km": self.vigilance_best_km,
               "titles": sorted(self.vigilance_titles), "areas": sorted(self.vigilance_areas),
+              "targets": [t.key for t in self.targets],
               "tg": {k: iso(v) for k, v in self.ua_tg_state.items()}}
         self.store.kv_set("stare_vigilenta", json.dumps(st, ensure_ascii=False))
 
@@ -385,6 +386,8 @@ class Engine:
         pts = [geo.BY_KEY[k] for k in self.vigilance_areas if k in geo.BY_KEY]
         if pts:
             self.vigilance_best_km = min(self._tdist(p)[0] for p in pts)
+        elif st.get("targets") != [t.key for t in self.targets]:
+            self.vigilance_best_km = None  # calculată față de alte ținte; se reface la următoarea citire, fără mesaj
         for k, v in (st.get("tg") or {}).items():
             ts = parse_iso(v)
             if ts and t - ts <= dt.timedelta(minutes=self.cfg.tg_alert_ttl_min):
@@ -534,9 +537,9 @@ class Engine:
         if h.place.key in PRUT_EDGE_KEYS:
             return True
         to_ro = any(p.country == "RO" for p in f.direction_to)
-        if f.lost_or_left and f.toward_ua and not f.westward and not to_ro:
-            # a părăsit R. Moldova spre Ucraina (ex. pe la Otaci): se îndepărtează. Doar cu „a părăsit”:
-            # „drone lansate spre Ucraina au intrat în R. Moldova” rămâne o posibilă apropiere
+        if f.toward_ua and not f.westward and not to_ro and geo.dist_to_prut_km(h.place) >= 40:
+            # a părăsit R. Moldova spre Ucraina, departe de Prut (ex. pe la Otaci): se îndepărtează.
+            # Lângă Prut (Fălești, Glodeni, Edineț) nu retrogradăm niciodată: acolo o greșeală ar costa o alertă.
             return False
         # longitudinea spune „vest” doar pentru R. Moldova / România; o poziție din UA (Cernăuți, Mohyliv)
         # nu devine apropiere fără o direcție spre vest în text
@@ -981,16 +984,22 @@ class Engine:
         tinta, dist_tinta_km. Iașul și Prutul sunt calculate de colector („near”). Se recalculează și la
         repornire (arhiva nu are câmpul, iar lista de ținte se poate schimba)."""
         lat, lon, r = m.get("lat"), m.get("lon"), m.get("radius_nm")
+        precise = m.get("dist_tinte_km") if isinstance(m.get("dist_tinte_km"), dict) else {}
         best = None
         coarse = isinstance(r, (int, float)) and r > 100  # cerc Q prea mare: distanța nu spune nimic
-        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not coarse:
-            rad = (r if isinstance(r, (int, float)) else 0) * 1.852
-            for t in self.targets:
-                if t is self.cfg.target:
-                    continue
-                d = max(0.0, geo.haversine_km(lat, lon, t.lat, t.lon) - rad)
-                if d <= 60 and (best is None or d < best[0]):
-                    best = (d, t)
+        circle_ok = isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not coarse
+        rad = (r if isinstance(r, (int, float)) else 0) * 1.852
+        for t in self.targets:
+            if t is self.cfg.target:
+                continue
+            if isinstance(precise.get(t.key), (int, float)):
+                d = float(precise[t.key])  # poligonul zonei, calculat de colector
+            elif circle_ok:
+                d = max(0.0, geo.haversine_km(lat, lon, t.lat, t.lon) - rad)  # arhivă veche / fără poligon: cercul Q
+            else:
+                continue
+            if d <= 60 and (best is None or d < best[0]):
+                best = (d, t)
         m["near_tinta"] = best is not None
         m["tinta"] = best[1].name if best else None
         m["dist_tinta_km"] = round(best[0]) if best else None
@@ -1050,8 +1059,11 @@ class Engine:
         self._save_announced()
         md = [m for m in items if m.get("category") == "spatiu_aerian_inchis" and m.get("fir") == "LUUU"]
         def line(m):  # zonele de lângă alt oraș decât Iași: textul colectorului dă doar distanța până la Iași
-            if m.get("near_tinta") and not m.get("near") and m.get("tinta"):
-                return f"lângă {m['tinta']} (~{m.get('dist_tinta_km')} km): {m['_text']}"
+            t, d, di = m.get("tinta"), m.get("dist_tinta_km"), m.get("dist_iasi_km")
+            closer = isinstance(d, (int, float)) and isinstance(di, (int, float)) and d < di
+            if m.get("near_tinta") and t and (not m.get("near") or closer):
+                where = f"în zona orașului {t}" if d == 0 else f"lângă {t} (~{d} km)"
+                return f"{where}: {m['_text']}"
             return m["_text"]
 
         body = line(items[0]) if len(items) == 1 else "\n• " + "\n• ".join(line(m) for m in items)

@@ -70,11 +70,22 @@ DIRECTION = re.compile(
 )
 ADMIN_CONT = re.compile(r",\s*((?:raionul|r\.|regiunea|районі?|район\w*|област\w*)\s+[^\.,;:!\n]{0,40})")
 ORIGIN = re.compile(r"(?<!\w)(?:dinspre|з боку|со стороны|from)\s+([^\.,;:!\n]{0,60})")
-# plecare spre Ucraina: drona se îndepărtează de România (ex. „a părăsit spațiul aerian pe la Otaci, revenind în Ucraina”)
-TOWARD_UA = _rx([r"(?:spre|catre|inapoi (?:in|spre)|revenind (?:in|spre)|s-a intors (?:in|spre)|a revenit (?:in|spre)|"
-                 r"in directia|cu directia|in spatiul aerian al) (?:spatiul aerian (?:al )?)?ucrain",
-                 r"в (?:сторону|направлении) украин", r"вернул\w* в украин", r"повернул\w* (?:в|до) україн",
-                 r"у напрямку україн", r"в напрямку україн"])
+# Plecare din R. Moldova spre Ucraina (drona se îndepărtează de România), ex. „a părăsit spațiul aerian
+# pe la Otaci, revenind în Ucraina”. Direcția contează doar DUPĂ verbul de plecare: știrile moldovenești
+# încep des cu „una dintre dronele lansate spre Ucraina …”, care nu spune încotro a plecat drona.
+# Pauza dintre ele nu trece de un punct (în afară de „R.”), de „;” sau de un rând nou.
+_GAP = r"(?:[^.;\n]|(?<=r)\.){0,100}?"
+_RO_UA = (r"(?:spre|catre|inapoi (?:in|spre)|revenind (?:in|spre)|intorcandu-se (?:in|spre)|s-a intors (?:in|spre)|"
+          r"a revenit (?:in|spre)|in directia|cu directia|in spatiul aerian al|pe teritoriul|"
+          r"(?:a intrat|a patruns|intrand|patrunzand) in) (?:spatiul aerian (?:al )?|teritoriul )?ucrain")
+TOWARD_UA = re.compile(
+    r"(?<!\w)(?:a parasit|a iesit din|parasind|iesind din) (?:spatiul aerian|teritoriul)" + _GAP + r"(?<!\w)" + _RO_UA
+    + r"|(?<!\w)(?:revenind|intorcandu-se|s-a intors|s-a reintors|a revenit) (?:in|spre) (?:spatiul aerian (?:al )?|teritoriul )?ucrain"
+    + r"|(?<!\w)(?:покинул|вылетел|улетел|ушел|ушёл)\w*" + _GAP + r"(?:в сторону|в направлении|на территорию) украин"
+    + r"|(?<!\w)(?:покинув|залишив|вилетів|полетів)\w*" + _GAP + r"(?:у бік|в бік|у напрямку|в напрямку|на територію) україн"
+    + r"|(?<!\w)вернул\w* (?:в|на) (?:воздушн\w* пространств\w* )?украин"
+    + r"|(?<!\w)поверну\w* (?:в|до|на) (?:повітрян\w* прост\w* )?україн")
+ROMANIAN_ADJ = re.compile(r"(?<!\w)roman(?:esc|easc)")  # „spațiul aerian românesc”
 WESTWARD = _rx([r"на захід", r"західн\w* напрям", r"на запад", r"spre vest", r"directia vest", r"nord-vest", r"sud-vest",
                  r"північн\w*[ -]захід", r"північно-західн", r"південн\w*[ -]захід", r"південно-західн",
                  r"северо-запад", r"юго-запад", r"западн\w* направлен", r"westward", r"north-?west", r"south-?west"])
@@ -160,7 +171,7 @@ def analyze(text: str) -> Finding:
     f.mentions_moldova = bool(MOLDOVA.search(n))
     f.mentions_romania = bool(ROMANIA.search(n))
     f.westward = bool(WESTWARD.search(n))
-    f.toward_ua = bool(TOWARD_UA.search(n)) and not f.mentions_romania
+    f.toward_ua = bool(TOWARD_UA.search(n)) and not f.mentions_romania and not ROMANIAN_ADJ.search(n)
     f.places = find_places(n)
     for m in DIRECTION.finditer(n):
         tail = m.group(1)
