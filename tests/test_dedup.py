@@ -299,3 +299,51 @@ def test_old_all_clear_closes_restored_channel_alert(tmp_path):
                  published_at=t + dt.timedelta(minutes=5), text="🟢 Відбій тривоги в Подільський район")
     e2.process(off, later)
     assert "Подільський район" not in e2.ua_tg_state
+
+
+# ------------------------------------------------------------------ știri fără poziție (aceeași incursiune, alte publicații)
+ECHO_1 = "O dronă a survolat neautorizat spațiul aerian al Republicii Moldova timp de două minute"
+ECHO_2 = "O nouă dronă a intrat în Republica Moldova. Record de incursiuni într-o singură lună"
+ECHO_3 = "Încă o dronă a traversat neautorizat spațiul aerian al Republicii Moldova"
+
+
+def test_placeless_news_echoes_give_one_message():
+    # cazul real din 4.11: două titluri la pornire (11:35) și al treilea la 12:28 → un singur mesaj
+    e = eng()
+    first = md(e, m(0), ECHO_1)
+    assert len(first) == 1 and "poziție nepublicată" in first[0].text
+    assert md(e, m(0), ECHO_2) == []
+    for k in range(1, 54):
+        assert e.tick(m(k)) == []
+    assert md(e, m(53), ECHO_3) == []
+
+
+def test_placeless_echo_still_lets_position_and_approach_through():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    assert md(e, m(5), ECHO_2) == []
+    msgs = md(e, m(12), "Drona a fost observată în raionul Soroca")          # prima poziție: se anunță
+    assert len(msgs) == 1 and "Soroca" in msgs[0].text
+    e2 = eng()
+    md(e2, m(0), ECHO_1)
+    msgs = md(e2, m(70), "Drona care a survolat R. Moldova s-a îndreptat spre România și a dispărut de pe radar")
+    assert len(msgs) == 1 and "APROPIERE" in msgs[0].text
+
+
+def test_placeless_news_after_echo_window_is_a_new_message():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    for k in range(1, 182):
+        e.tick(m(k))
+    assert len(md(e, m(181), ECHO_3)) == 1
+
+
+def test_placeless_echo_window_survives_restart(tmp_path):
+    from veghe.store import Store
+
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    assert len(md(e, m(0), ECHO_1)) == 1
+    e2 = eng(st)
+    e2._restore_hyps(m(30))
+    assert md(e2, m(30), ECHO_3) == []

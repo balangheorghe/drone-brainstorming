@@ -20,6 +20,7 @@ approach_km = 120         # „apropiere”: poziție la ≤ atâția km de cea 
 vigilance_quiet_min = 20 # pauza minimă înainte de o actualizare VIGILENȚĂ (alertă extinsă mai aproape de Iași)
 vigilance_end_min = 30    # episodul VIGILENȚĂ se încheie după atâtea minute fără alerte (o alertă care pâlpâie nu dă mesaje noi)
 official_repeat_min = 60  # o retransmitere per județ la cel mult atâtea minute
+news_echo_min = 180       # o știre MD fără poziție, la ≤ 3 h după un mesaj despre o dronă în R. Moldova: fără mesaj nou
 watch_counties = ["Iași", "Botoșani", "Suceava", "Neamț", "Vaslui", "Bacău"]
 # Ținte urmărite: distanțele, ETA și „apropierea” se calculează față de cea mai apropiată.
 # Implicit tot Nord-Estul (cele 6 reședințe de județ). Iașul rămâne referința pentru pragul „direcție nouă”

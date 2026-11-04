@@ -111,6 +111,8 @@ class EngineConfig:
     state_stale_min: float = 10
     target: geo.Place = geo.IASI
     targets: list = field(default_factory=list)  # ținte urmărite (ex. Iași, Suceava); gol = doar `target`
+    # o știre fără poziție la ≤ atâtea minute după un mesaj despre o dronă în R. Moldova nu mai dă un mesaj nou
+    news_echo_min: float = 180
 
 
 @dataclass
@@ -160,6 +162,7 @@ class Engine:
         self.vigilance_best_km: float | None = None
         self.vigilance_areas: set[str] = set()  # zonele (puncte) anunțate în episodul curent
         self.hyps: list[Hypothesis] = []
+        self.md_msg_at: dt.datetime | None = None  # ultimul mesaj ATENȚIE/APROPIERE (dronă în R. Moldova)
         self._next_id = int(store.kv_get("next_hypothesis_id", "1")) if store else 1
         self.last_official: dict[str, dt.datetime] = {}
         self.last_end: dict[str, dt.datetime] = {}
@@ -495,6 +498,10 @@ class Engine:
         h.notified = max(h.notified, h.level)
         h.last_msg_at = now
         h.last_msg_place = place_key
+        if kind in ("moldova", "apropiere"):
+            self.md_msg_at = now
+            if self.store:
+                self.store.kv_set("ultim_mesaj_md", iso(now))
         h.pending = None
         if status:
             h.status_sent.add(status)
@@ -561,9 +568,20 @@ class Engine:
         nk = new_drone_kind(sig.text)
         mk = sure_marker(sig.text) if nk == 2 else ""
         h = (self._match_sure(place, now, mk) if nk == 2 else self._match_hyp(place, now, nk > 0))
+        # Știre fără poziție la scurt timp după un mesaj despre o dronă în R. Moldova: de obicei aceeași
+        # incursiune, preluată de altă publicație („o nouă dronă”, „încă o dronă” se referă des la zilele
+        # trecute). Nu mai dă un mesaj; o poziție, o apropiere sau „spre România” se anunță în continuare.
+        echo = (h is None and place is None and sig.role in NEWS_ROLES and self.md_msg_at is not None
+                and dt.timedelta(0) <= now - self.md_msg_at <= dt.timedelta(minutes=self.cfg.news_echo_min))
+        if echo:
+            cand = [x for x in self.open_hyps() if x.notified >= Level.MOLDOVA]
+            h = max(cand, key=lambda x: x.updated) if cand else None
         if h is None:
             h = self._new_hyp(now, Level.MOLDOVA, nk > 0)
             h.sure_marker = mk
+            if echo:  # ipoteză tăcută: grupul știe deja de incursiune
+                h.notified = Level.MOLDOVA
+                h.status_sent.add("disparut")
         h.level = max(h.level, Level.MOLDOVA)
         h.updated, h.jet = now, h.jet or f.jet
         if place:
@@ -1182,6 +1200,7 @@ class Engine:
             self.store.kv_set("stare_ipoteze", blob)
 
     def _restore_hyps(self, t):
+        self.md_msg_at = parse_iso(self.store.kv_get("ultim_mesaj_md", "") or None)
         try:
             hs = json.loads(self.store.kv_get("stare_ipoteze", "") or "[]")
         except ValueError:

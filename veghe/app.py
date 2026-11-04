@@ -172,7 +172,7 @@ def build_engine(cfg: Config, store) -> Engine:
         max_age_min=g("max_age_min"), max_age_news_min=g("max_age_news_min"), ttl_min=g("ttl_min"),
         approach_km=g("approach_km"), vigilance_quiet_min=g("vigilance_quiet_min"), vigilance_end_min=g("vigilance_end_min"),
         official_repeat_min=g("official_repeat_min"), tg_alert_ttl_min=g("tg_alert_ttl_min"),
-        state_stale_min=g("state_stale_min"),
+        state_stale_min=g("state_stale_min"), news_echo_min=g("news_echo_min"),
         targets=_targets(e.get("targets", geo.NE_TARGETS)),
     )
     return Engine(ec, store)
