@@ -355,3 +355,166 @@ def test_placeless_lost_from_radar_echo_after_ttl_is_silent():
     for k in range(1, 61):
         e.tick(m(k))                                                   # ipoteza s-a închis (45 min)
     assert md(e, m(60), "Drona care a survolat R. Moldova a dispărut de pe radar, informează MApN") == []
+
+
+# ------------------------------------------------------------------ verificarea regulii de ecou (ce NU trebuie ascuns)
+def mapn(e, t, text):
+    return e.process(Signal(source="tg:MDNationalArmy", role="md_official", text=text, received_at=t, published_at=t), t)
+
+
+MAPN_2 = "Sistemele de supraveghere ale Armatei Naționale au detectat o dronă care a încălcat spațiul aerian al Republicii Moldova"
+AGAIN = "Încă o dronă a intrat în spațiul aerian al R. Moldova, la Ocnița"
+
+
+def _ticks(e, a, b):
+    return [x for k in range(a, b) for x in e.tick(m(k))]
+
+
+def test_placeless_second_drone_toward_romania_is_announced_after_approach():
+    # H-1 deja APROPIERE (Ungheni): „a doua dronă … spre România” fără poziție e o apropiere nouă, nu un ecou
+    for text in ("O a doua dronă a intrat în spațiul aerian al R. Moldova și se îndreaptă spre România",
+                 "Încă o dronă a părăsit spațiul aerian al R. Moldova spre România",
+                 "Ще один БпЛА залетів до Молдови і рухається у напрямку Румунії"):
+        e = eng()
+        assert [x.kind for x in md(e, m(0), "MApN: O dronă a fost detectată în raionul Ungheni, se deplasează spre vest")] == ["apropiere"]
+        out = md(e, m(15), text)
+        assert len(out) == 1 and out[0].kind == "apropiere" and "H-2" in out[0].text and "poziție nepublicată" in out[0].text, text
+
+
+def test_placeless_echo_does_not_take_over_later_updates_of_announced_drone():
+    # ecourile fără poziție nu „fură” vestea: poziția și „a dispărut” de mai târziu sunt anunțate pentru H-1
+    for late, word in (("Drona a fost observată în raionul Soroca", "Soroca"),
+                       ("Drona care a survolat R. Moldova a dispărut de pe radar, informează MApN", "dispărut")):
+        e = eng()
+        assert len(md(e, m(0), ECHO_1)) == 1
+        assert md(e, m(0), ECHO_2) == []
+        assert md(e, m(20), ECHO_3) == []
+        out = md(e, m(25), late)
+        assert len(out) == 1 and "H-1" in out[0].text and word in out[0].text, late
+
+
+def test_placeless_echo_does_not_keep_announced_hypothesis_open():
+    e = eng()
+    assert len(md(e, m(0), "MApN: O dronă a fost detectată în raionul Ungheni, se deplasează spre vest")) == 1
+    for k in (30, 60, 95):
+        assert md(e, m(k), ECHO_3) == []
+        _ticks(e, k + 1, k + 30)
+    msgs = md(e, m(130), "MApN: O dronă a fost detectată în raionul Ungheni, se deplasează spre vest")
+    assert len(msgs) == 1 and "APROPIERE" in msgs[0].text
+
+
+def test_placeless_sure_new_drones_are_announced_inside_echo_window():
+    # „încă două drone”, „a treia dronă”, „ще два БпЛА” = drone noi, nu ecoul știrii anterioare
+    e = eng()
+    md(e, m(0), ECHO_1)
+    msgs = md(e, m(10), "Încă două drone au pătruns în spațiul aerian al Republicii Moldova")
+    assert len(msgs) == 1 and "H-2" in msgs[0].text
+    assert md(e, m(14), "Încă două drone au pătruns în spațiul aerian al R. Moldova, confirmă MApN") == []
+    assert md(e, m(20), ECHO_3) == []
+    e2 = eng()
+    md(e2, m(0), ECHO_1)
+    _ticks(e2, 1, 70)                                                  # H-1 închisă (45 min), fereastra încă activă
+    msgs = md(e2, m(70), "Alte două drone au intrat în spațiul aerian al R. Moldova, informează MApN")
+    assert len(msgs) == 1 and "ATENȚIE" in msgs[0].text
+    e3 = eng()
+    md(e3, m(0), ECHO_1)
+    assert len(md(e3, m(12), "Ще два БпЛА перетнули кордон Молдови")) == 1
+
+
+def test_official_placeless_new_wave_inside_echo_window_is_announced():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    _ticks(e, 1, 121)                                                  # prima ipoteză s-a închis
+    msgs = mapn(e, m(120), MAPN_2)                                     # MApN: incursiune nouă, fără raion
+    assert len(msgs) == 1 and "poziție nepublicată" in msgs[0].text
+
+
+def test_official_report_unsilences_press_echo_hypothesis():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    _ticks(e, 1, 121)
+    assert md(e, m(120), ECHO_3) == []                                 # presa întâi: ipoteză tăcută
+    msgs = mapn(e, m(125), MAPN_2)                                     # MApN 5 min mai târziu: se anunță
+    assert len(msgs) == 1 and "Armatei Naționale" in msgs[0].text
+    assert mapn(e, m(130), MAPN_2) == []                               # o singură dată
+    # aceeași incursiune încă deschisă (H-1 anunțată): confirmarea MApN nu e un mesaj nou
+    e2 = eng()
+    md(e2, m(0), ECHO_1)
+    assert md(e2, m(5), ECHO_2) == []
+    assert mapn(e2, m(10), MAPN_2) == []
+    # dar MApN „încă o dronă” (sursă oficială) peste ecoul „o nouă dronă” din presă: o a doua dronă, se anunță
+    msgs = mapn(e2, m(12), "MApN: încă o dronă a încălcat spațiul aerian al Republicii Moldova")
+    assert len(msgs) == 1 and "H-2" in msgs[0].text and "MApN" in msgs[0].text
+
+
+def test_placeless_news_mentioning_romania_is_not_an_echo():
+    e = eng()
+    md(e, m(0), ECHO_1)
+    _ticks(e, 1, 121)
+    assert len(md(e, m(120), "Drona care a survolat R. Moldova a intrat în spațiul aerian al României")) == 1
+
+
+def test_marker_report_for_just_announced_place_is_an_echo():
+    e = eng()
+    assert len(md(e, m(0), "MApN: o dronă a survolat spațiul aerian al R. Moldova, în zona localității Ocnița")) == 1
+    assert _ticks(e, 1, 29) == []
+    assert md(e, m(29), AGAIN) == []                                   # altă publicație, aceeași dronă
+    assert _ticks(e, 30, 45) == []
+    assert md(e, m(45), "Еще один беспилотник залетел в Молдову: дрон пролетел над Окницей") == []
+    assert len(e.open_hyps()) == 1
+    msgs = md(e, m(50), "Încă o dronă a intrat în R. Moldova, la Ocnița, și s-a îndreptat spre România")
+    assert len(msgs) == 1 and "APROPIERE" in msgs[0].text
+
+
+def test_marker_report_window_counts_from_the_announcement():
+    e = eng()
+    md(e, m(0), "MApN: o dronă a survolat spațiul aerian al R. Moldova, în zona localității Ocnița")
+    _ticks(e, 1, 30)
+    assert md(e, m(30), "O dronă a survolat raionul Ocnița") == []     # ține ipoteza deschisă
+    _ticks(e, 31, 61)
+    msgs = md(e, m(61), AGAIN)                                         # > 60 min de la anunț
+    assert len(msgs) == 1 and "H-2" in msgs[0].text
+
+
+def test_marker_report_other_place_or_official_source_still_opens_a_new_hypothesis():
+    e = eng()
+    md(e, m(0), "MApN: o dronă a survolat spațiul aerian al R. Moldova, în zona localității Ocnița")
+    msgs = md(e, m(29), "Încă o dronă a intrat în spațiul aerian al R. Moldova, în raionul Soroca")
+    assert len(msgs) == 1 and "H-2" in msgs[0].text
+    e = eng()
+    md(e, m(0), "MApN: o dronă a survolat spațiul aerian al R. Moldova, în zona localității Ocnița")
+    off = mapn(e, m(29), "MApN: încă o dronă a intrat prin Ocnița")
+    assert len(off) == 1 and "H-2" in off[0].text
+
+
+def test_period_counter_ordinal_is_not_a_new_drone():
+    # „a patra dronă în această lună” numără incursiunile lunii: aceeași dronă, nu o ipoteză nouă
+    e = eng()
+    md(e, m(0), ECHO_1)
+    assert len(md(e, m(6), "O dronă a survolat spațiul aerian al R. Moldova în zona localității Ocnița")) == 1
+    assert md(e, m(30), "A patra dronă în această lună a intrat în R. Moldova, la Ocnița") == []
+    assert md(e, m(31), "Третий беспилотник за месяц пролетел над Окницей") == []
+    msgs = md(e, m(35), "A treia dronă în această săptămână a survolat raionul Fălești")      # apropiere: se anunță
+    assert len(msgs) == 1 and "APROPIERE" in msgs[0].text and "H-1" in msgs[0].text
+    for text in ("A treia dronă a intrat în R. Moldova, la Ocnița", "A treia dronă în această seară, la Ocnița"):
+        e2 = eng()
+        md(e2, m(0), "O dronă a survolat spațiul aerian al R. Moldova în zona localității Ocnița")
+        msgs = md(e2, m(20), text)
+        assert len(msgs) == 1 and "H-2" in msgs[0].text, text
+
+
+def test_same_place_after_close_is_sent_but_labelled(tmp_path):
+    from veghe.store import Store
+
+    st = Store(str(tmp_path / "v.db"))
+    e = eng(st)
+    text = "MApN: o dronă a survolat spațiul aerian al R. Moldova, în zona localității Ocnița"
+    assert len(md(e, m(0), text)) == 1
+    _ticks(e, 1, 95)                                                   # H-1 închisă
+    e2 = eng(st)
+    e2._restore_hyps(m(95))
+    msgs = md(e2, m(95), "O dronă a fost văzută la Ocnița")             # poate fi o a doua dronă: se trimite …
+    assert len(msgs) == 1 and "H-2" in msgs[0].text
+    assert "același loc ca H-1" in msgs[0].text                       # … dar marcată
+    msgs = md(e2, m(100), "Încă două drone au intrat în R. Moldova, în raionul Soroca")
+    assert "același loc" not in msgs[0].text

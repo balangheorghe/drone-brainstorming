@@ -66,17 +66,40 @@ NEW_DRONE_SURE_RX = re.compile(r"(?<!\w)(?:(?P<mk>" + _NEW_SURE + r")\s+" + _NEW
                                + _AFTER + "|(?P<mk2>" + _MORE_POST + "))")
 
 
+# „A patra dronă în această lună”, „третий беспилотник за месяц”: numără incursiunile perioadei, nu o dronă nouă
+_ORD = (r"(?:a doua|al doilea|a treia|al treilea|a patra|al patrulea|(?:a )?(?:second|third|fourth)|"
+        r"другий|друга|другу|второй|вторая|вторую|третій|третя|третю|третий|третья|третью)")
+_ORD_NOUN_RX = re.compile(r"(?<!\w)" + _ORD + r"\s+(?:\S+\s+)??" + _NOUN + r"\w*")
+_PERIOD_RX = re.compile(
+    r"(?<!\w)(?:(?:in|din|pe) (?:aceasta|acest|ultima|ultimul) (?:luna|saptamana|an)|(?:luna|saptamana) (?:aceasta|curenta)|"
+    r"anul (?:acesta|curent)|intr-o singura (?:luna|saptamana)|in ultimele \w+ (?:luni|saptamani)|"
+    r"de la inceputul (?:lunii|saptamanii|anului|razboiului|lui \w+)|(?:in|din) (?:ianuarie|februarie|martie|aprilie|"
+    r"iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie|20\d\d)|"
+    r"за (?:этот |текущий |последний |цей |останній )?(?:месяц|неделю|год|місяць|тиждень|рік)|"
+    r"с начала (?:месяца|недели|года|войны)|з початку (?:місяця|тижня|року|війни)|в (?:этом|текущем) (?:месяце|году)|"
+    r"на этой неделе|(?:цього|у цьому|в цьому) (?:місяця|місяці|тижня|тижні|року|році))(?!\w)")
+# … dar „a treia dronă în această noapte / azi” e chiar o dronă nouă („mai” lipsește intenționat: „în mai puțin de”)
+_LIVE_RX = re.compile(r"(?<!\w)(?:azi|astazi|in aceasta (?:noapte|seara|dimineata)|noaptea aceasta|in noaptea|in seara|"
+                      r"ultimele \d+ (?:de )?ore|сегодня|ночью|за ночь|за сутки|сьогодні|вночі|цієї ночі|за ніч|за добу)(?!\w)")
+
+
+def _drop_counters(n: str) -> str:
+    if _LIVE_RX.search(n):
+        return n
+    return _ORD_NOUN_RX.sub(lambda mo: " " if _PERIOD_RX.search(n, mo.end(), mo.end() + 80) else mo.group(0), n)
+
+
 def new_drone_kind(text: str) -> int:
     """0 = nicio mențiune; 1 = „altă dronă” (poate fi aceeași a doua dronă din știrile anterioare);
     2 = sigur o dronă/grup nou (a treia, încă două, ще кілька …): deschide mereu o ipoteză nouă."""
-    n = normalize(text).replace("ё", "е")
+    n = _drop_counters(normalize(text).replace("ё", "е"))
     if NEW_DRONE_SURE_RX.search(n):
         return 2
     return 1 if NEW_DRONE_RX.search(n) else 0
 
 
 def sure_marker(text: str) -> str:
-    m = NEW_DRONE_SURE_RX.search(normalize(text).replace("ё", "е"))
+    m = NEW_DRONE_SURE_RX.search(_drop_counters(normalize(text).replace("ё", "е")))
     return (m.group("mk") or m.group("mk2") or "") if m else ""
 
 
@@ -163,6 +186,7 @@ class Engine:
         self.vigilance_areas: set[str] = set()  # zonele (puncte) anunțate în episodul curent
         self.hyps: list[Hypothesis] = []
         self.md_msg_at: dt.datetime | None = None  # ultimul mesaj ATENȚIE/APROPIERE (dronă în R. Moldova)
+        self.md_places: dict[str, tuple[dt.datetime, int]] = {}  # loc anunțat → (când, H-id), pentru „același loc ca”
         self._next_id = int(store.kv_get("next_hypothesis_id", "1")) if store else 1
         self.last_official: dict[str, dt.datetime] = {}
         self.last_end: dict[str, dt.datetime] = {}
@@ -427,10 +451,15 @@ class Engine:
                 if geo.dist(place, h.place) > geo.V_JET_KMH * hours + 80:
                     continue
             d = geo.dist(place, h.place) if place is not None and h.place is not None else float("inf")
-            key = (d, -h.updated.timestamp())
+            key = (d, self._silent(h), -h.updated.timestamp())  # la egalitate: ipoteza anunțată, nu una tăcută
             if best is None or key < best[0]:
                 best = (key, h)
         return best[1] if best else None
+
+    @staticmethod
+    def _silent(h: Hypothesis) -> bool:
+        """Ipoteză deschisă doar de ecouri din presă: n-a trimis niciun mesaj (o ipoteză nouă trimite imediat)."""
+        return h.last_msg_at is None and h.notified >= Level.MOLDOVA
 
     def _match_sure(self, place, now, mk) -> Hypothesis | None:
         """„încă două drone … Hîncești” repetat de alte publicații: aceeași ipoteză (același marcaj, același loc, ≤ 30 min)."""
@@ -482,6 +511,10 @@ class Engine:
                     h.pending = None  # doar un loc deja anunțat; un loc nou rămâne de trimis
             return []  # aceeași dronă, fără apropiere reală: nu repetăm mesajul
         pos = self._eta_text(place) if place else "poziție nepublicată"
+        prev = self.md_places.get(place_key) if kind in ("moldova", "apropiere") else None
+        if prev and prev[1] != h.id and dt.timedelta(0) <= now - prev[0] <= dt.timedelta(minutes=self.cfg.news_echo_min):
+            # același loc anunțat de curând pentru altă ipoteză: probabil aceeași dronă, relatată din nou
+            pos += f" (același loc ca H-{prev[1]} de la {hhmm(prev[0])}: posibil aceeași dronă, relatată din nou)"
         jet = " (posibil cu reacție)" if h.jet else ""
         src = f"{sig.source} {sig.url}".strip()
         off = " RO-Alert deja raportat." if h.official else ""
@@ -500,8 +533,13 @@ class Engine:
         h.last_msg_place = place_key
         if kind in ("moldova", "apropiere"):
             self.md_msg_at = now
+            if place_key:
+                self.md_places[place_key] = (now, h.id)
+            lim = dt.timedelta(minutes=self.cfg.news_echo_min)
+            self.md_places = {k: v for k, v in self.md_places.items() if now - v[0] <= lim}
             if self.store:
                 self.store.kv_set("ultim_mesaj_md", iso(now))
+                self.store.kv_set("locuri_anuntate_md", json.dumps({k: [iso(t), i] for k, (t, i) in self.md_places.items()}))
         h.pending = None
         if status:
             h.status_sent.add(status)
@@ -568,20 +606,32 @@ class Engine:
         nk = new_drone_kind(sig.text)
         mk = sure_marker(sig.text) if nk == 2 else ""
         h = (self._match_sure(place, now, mk) if nk == 2 else self._match_hyp(place, now, nk > 0))
-        # Știre fără poziție la scurt timp după un mesaj despre o dronă în R. Moldova: de obicei aceeași
-        # incursiune, preluată de altă publicație („o nouă dronă”, „încă o dronă” se referă des la zilele
-        # trecute). Nu mai dă un mesaj; o poziție, o apropiere sau „spre România” se anunță în continuare.
-        echo = (h is None and place is None and sig.role in NEWS_ROLES and self.md_msg_at is not None
+        # „Încă o dronă … la Ocnița” (presă) la ≤ 60 min după mesajul grupului chiar pentru Ocnița: de obicei
+        # aceeași incursiune, preluată de altă publicație („încă o” = încă una luna aceasta). Merge la ipoteza
+        # care a anunțat locul; o apropiere sau o poziție mai apropiată se anunță în continuare. Sursele
+        # oficiale MD și alte localități deschid în continuare o ipoteză nouă.
+        if h is None and nk == 1 and place is not None and sig.role == "md_news":
+            cand = [x for x in self.open_hyps() if x.notified >= Level.MOLDOVA and place.key in x.reported_at
+                    and dt.timedelta(0) <= now - x.reported_at[place.key] <= dt.timedelta(minutes=60)]
+            h = max(cand, key=lambda x: x.reported_at[place.key]) if cand else None
+        # Știre de presă fără poziție la ≤ news_echo_min după un mesaj despre o dronă în R. Moldova: de obicei
+        # aceeași incursiune, preluată de altă publicație („o nouă dronă”, „încă o dronă” se referă des la zilele
+        # trecute). Deschide o ipoteză TĂCUTĂ (nu se lipește de cea anunțată, ca să nu-i ascundă vestea).
+        # Nu se aplică: surselor oficiale, „încă două / a treia” (sigur drone noi), textelor care pomenesc România.
+        echo_ok = place is None and sig.role == "md_news" and nk < 2 and not f.mentions_romania
+        echo = (h is None and echo_ok and self.md_msg_at is not None
                 and dt.timedelta(0) <= now - self.md_msg_at <= dt.timedelta(minutes=self.cfg.news_echo_min))
-        if echo:
-            cand = [x for x in self.open_hyps() if x.notified >= Level.MOLDOVA]
-            h = max(cand, key=lambda x: x.updated) if cand else None
         if h is None:
             h = self._new_hyp(now, Level.MOLDOVA, nk > 0)
             h.sure_marker = mk
             if echo:  # ipoteză tăcută: grupul știe deja de incursiune
                 h.notified = Level.MOLDOVA
                 h.status_sent.add("disparut")
+        elif sig.role != "md_news" and self._silent(h):
+            # ipoteză tăcută (doar ecouri din presă) confirmată de o sursă oficială: se anunță. O confirmare a
+            # incursiunii deja anunțate nu ajunge aici (se potrivește întâi cu ipoteza anunțată).
+            h.notified = Level.FOND
+            h.status_sent.discard("disparut")
         h.level = max(h.level, Level.MOLDOVA)
         h.updated, h.jet = now, h.jet or f.jet
         if place:
@@ -1201,6 +1251,11 @@ class Engine:
 
     def _restore_hyps(self, t):
         self.md_msg_at = parse_iso(self.store.kv_get("ultim_mesaj_md", "") or None)
+        try:
+            raw = json.loads(self.store.kv_get("locuri_anuntate_md", "") or "{}")
+            self.md_places = {k: (parse_iso(v[0]), int(v[1])) for k, v in raw.items() if parse_iso(v[0])}
+        except (ValueError, TypeError, IndexError, AttributeError):
+            self.md_places = {}
         try:
             hs = json.loads(self.store.kv_get("stare_ipoteze", "") or "[]")
         except ValueError:
